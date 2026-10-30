@@ -1,0 +1,19 @@
+dp32g030_inc = include_directories('.')
+
+dp32g030_lib = static_library('dp32g030',
+  files(
+    'bus.c',
+    'cpu.c',
+    'decode.c',
+    'exc.c',
+    'exec.c',
+    'exec_alu.c',
+    'exec_branch.c',
+    'exec_mem.c',
+    'exec_misc.c',
+  ),
+  include_directories : dp32g030_inc)
+
+dp32g030_dep = declare_dependency(
+  link_with : dp32g030_lib,
+  include_directories : dp32g030_inc)
