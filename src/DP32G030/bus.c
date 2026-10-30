@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 
+#include "mmio.h"
+
 static bool dp32g030_bus_valid(uint32_t addr, unsigned size) {
   if (size != 1 && size != 2 && size != 4)
     return false;
@@ -34,8 +36,13 @@ bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
   const uint8_t *p = dp32g030_bus_flash(c, addr, size);
   if (!p)
     p = dp32g030_bus_sram(c, addr, size);
-  if (!p)
-    return false;
+
+  if (!p) {
+    const dp32g030_region_t *r = dp32g030_mmio_find(addr);
+    if (!r || !r->read)
+      return false;
+    return r->read(c, addr - r->base, size, out);
+  }
 
   uint32_t v = 0;
   for (unsigned i = 0; i < size; i++)
@@ -50,8 +57,12 @@ bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
     return false;
 
   uint8_t *p = dp32g030_bus_sram(c, addr, size);
-  if (!p)
-    return false;
+  if (!p) {
+    const dp32g030_region_t *r = dp32g030_mmio_find(addr);
+    if (!r || !r->write)
+      return false;
+    return r->write(c, addr - r->base, size, val);
+  }
 
   for (unsigned i = 0; i < size; i++)
     p[i] = (uint8_t)(val >> (8 * i));
