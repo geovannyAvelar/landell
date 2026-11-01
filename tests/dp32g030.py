@@ -51,6 +51,101 @@ class Insn(ctypes.Structure):
     ]
 
 
+class Scs(ctypes.Structure):
+    _fields_ = [
+        ("pending", ctypes.c_uint64),
+        ("active", ctypes.c_uint64),
+        ("irq_lines", ctypes.c_uint32),
+        ("nvic_enabled", ctypes.c_uint32),
+        ("prio", ctypes.c_uint8 * 48),
+        ("scr", ctypes.c_uint32),
+        ("st_ctrl", ctypes.c_uint32),
+        ("st_load", ctypes.c_uint32),
+        ("st_val", ctypes.c_uint32),
+    ]
+
+
+UART_TX_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint8)
+GPIO_CB = ctypes.CFUNCTYPE(
+    None, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint32, ctypes.c_uint32
+)
+
+
+class Gpio(ctypes.Structure):
+    _fields_ = [("out", ctypes.c_uint32), ("dir", ctypes.c_uint32), ("in_", ctypes.c_uint32)]
+
+
+class Uart(ctypes.Structure):
+    _fields_ = [
+        ("ctrl", ctypes.c_uint32),
+        ("baud", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("fifo", ctypes.c_uint32),
+        ("fc", ctypes.c_uint32),
+        ("rxto", ctypes.c_uint32),
+        ("sticky", ctypes.c_uint32),
+        ("rx", ctypes.c_uint8 * 8),
+        ("rx_head", ctypes.c_uint),
+        ("rx_count", ctypes.c_uint),
+        ("rxto_deadline", ctypes.c_uint64),
+    ]
+
+
+SPI_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint8)
+
+
+class Spi(ctypes.Structure):
+    _fields_ = [
+        ("cr", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("sticky", ctypes.c_uint32),
+        ("rx", ctypes.c_uint8 * 8),
+        ("rx_head", ctypes.c_uint),
+        ("rx_count", ctypes.c_uint),
+    ]
+
+
+class Adc(ctypes.Structure):
+    _fields_ = [
+        ("cfg", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("ifl", ctypes.c_uint32),
+        ("exttrig", ctypes.c_uint32),
+        ("calib_offset", ctypes.c_uint32),
+        ("calib_kd", ctypes.c_uint32),
+        ("input", ctypes.c_uint32 * 15),
+        ("result", ctypes.c_uint32 * 15),
+    ]
+
+
+class Crc(ctypes.Structure):
+    _fields_ = [("cr", ctypes.c_uint32), ("iv", ctypes.c_uint32), ("state", ctypes.c_uint32)]
+
+
+class Hooks(ctypes.Structure):
+    _fields_ = [
+        ("user", ctypes.c_void_p),
+        ("uart_tx", UART_TX_CB),
+        ("gpio_change", GPIO_CB),
+        ("spi_xfer", SPI_CB),
+    ]
+
+
+NREGIONS = 30
+
+
+class Periph(ctypes.Structure):
+    _fields_ = [
+        ("regfile", (ctypes.c_uint32 * 512) * NREGIONS),
+        ("gpio", Gpio * 3),
+        ("uart", Uart * 3),
+        ("spi", Spi * 2),
+        ("adc", Adc),
+        ("crc", Crc),
+        ("hooks", Hooks),
+    ]
+
+
 class Cpu(ctypes.Structure):
     _fields_ = [
         ("r", ctypes.c_uint32 * 16),
@@ -62,6 +157,16 @@ class Cpu(ctypes.Structure):
         ("sleeping", ctypes.c_bool),
         ("flash", ctypes.c_uint8 * FLASH_SIZE),
         ("sram", ctypes.c_uint8 * SRAM_SIZE),
+        ("cycles", ctypes.c_uint64),
+        ("msp", ctypes.c_uint32),
+        ("psp", ctypes.c_uint32),
+        ("using_psp", ctypes.c_bool),
+        ("handler", ctypes.c_bool),
+        ("locked_up", ctypes.c_bool),
+        ("event", ctypes.c_bool),
+        ("reset_req", ctypes.c_bool),
+        ("scs", Scs),
+        ("periph", Periph),
     ]
 
 
@@ -98,6 +203,14 @@ def load_lib(workdir):
     lib.dp32g030_cpu_run.restype = ctypes.c_uint8
     lib.dp32g030_cpu_free.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_cpu_free.restype = None
+    lib.dp32g030_gpio_set_input.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32, ctypes.c_uint32,
+    ]
+    lib.dp32g030_gpio_pins.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint]
+    lib.dp32g030_gpio_pins.restype = ctypes.c_uint32
+    lib.dp32g030_uart_rx.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint8]
+    lib.dp32g030_adc_set_input.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32]
+    lib.dp32g030_cpu_reset.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,
@@ -136,6 +249,15 @@ class Result:
     insn_pc: int
     sram: bytes
     flash: bytes
+    cycles: int = 0
+    msp: int = 0
+    psp: int = 0
+    using_psp: bool = False
+    handler: bool = False
+    locked_up: bool = False
+    pending: int = 0
+    active: int = 0
+    extra: object = None
 
     @property
     def sp(self):
@@ -173,7 +295,10 @@ class Result:
 
 def run(lib, halfwords, regs=None, flags=0, sram=b"", steps=1000, append_bkpt=True):
     hws = list(halfwords) + ([BKPT] if append_bkpt else [])
-    data = firmware(hws)
+    return run_image(lib, firmware(hws), regs, flags, sram, steps)
+
+
+def run_image(lib, data, regs=None, flags=0, sram=b"", steps=1000, setup=None, inspect=None):
     ptr = lib.dp32g030_cpu_new(to_buf(data), len(data))
     assert ptr, "dp32g030_cpu_new returned NULL"
     try:
@@ -183,7 +308,10 @@ def run(lib, halfwords, regs=None, flags=0, sram=b"", steps=1000, append_bkpt=Tr
         cpu.xpsr |= flags
         if sram:
             ctypes.memmove(cpu.sram, sram, len(sram))
+        if setup:
+            setup(ptr)
         status = lib.dp32g030_cpu_run(ctypes.byref(ptr), steps)
+        extra = inspect(ptr) if inspect else None
         return Result(
             status=status,
             r=list(cpu.r),
@@ -195,6 +323,15 @@ def run(lib, halfwords, regs=None, flags=0, sram=b"", steps=1000, append_bkpt=Tr
             insn_pc=cpu.insn_pc,
             sram=bytes(cpu.sram),
             flash=bytes(cpu.flash),
+            cycles=cpu.cycles,
+            msp=cpu.msp,
+            psp=cpu.psp,
+            using_psp=bool(cpu.using_psp),
+            handler=bool(cpu.handler),
+            locked_up=bool(cpu.locked_up),
+            pending=cpu.scs.pending,
+            active=cpu.scs.active,
+            extra=extra,
         )
     finally:
         lib.dp32g030_cpu_free(ptr)

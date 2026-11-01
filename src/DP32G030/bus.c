@@ -41,7 +41,7 @@ bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
     const dp32g030_region_t *r = dp32g030_mmio_find(addr);
     if (!r || !r->read)
       return false;
-    return r->read(c, addr - r->base, size, out);
+    return r->read(c, r, addr - r->base, size, out);
   }
 
   uint32_t v = 0;
@@ -61,7 +61,7 @@ bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
     const dp32g030_region_t *r = dp32g030_mmio_find(addr);
     if (!r || !r->write)
       return false;
-    return r->write(c, addr - r->base, size, val);
+    return r->write(c, r, addr - r->base, size, val);
   }
 
   for (unsigned i = 0; i < size; i++)

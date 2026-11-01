@@ -15,11 +15,20 @@ enum {
   EXIT_UNDEF = 3,
 };
 
+static int uart_echo = -1;
+
+static void uart_tx(void *user, unsigned uart, uint8_t byte) {
+  (void)user;
+  if ((int)uart == uart_echo)
+    putchar(byte);
+}
+
 static void usage(FILE *out, const char *prog) {
   fprintf(out,
-          "usage: %s [-s steps] firmware.bin\n"
+          "usage: %s [-s steps] [-u uart] firmware.bin\n"
           "\n"
           "  -s, --steps N  maximum instructions to execute (default %llu)\n"
+          "  -u, --uart N   print bytes sent by UART N (0-2) to stdout\n"
           "  -h, --help     show this help\n"
           "\n"
           "exit status: 0 ok, 1 usage or I/O error, 2 bus fault, 3 undefined "
@@ -73,6 +82,15 @@ int main(int argc, char **argv) {
       }
       continue;
     }
+    if (!strcmp(arg, "-u") || !strcmp(arg, "--uart")) {
+      if (++i >= argc || strlen(argv[i]) != 1 || argv[i][0] < '0' ||
+          argv[i][0] > '2') {
+        fprintf(stderr, "%s: invalid value for --uart\n", prog);
+        return EXIT_USAGE;
+      }
+      uart_echo = argv[i][0] - '0';
+      continue;
+    }
     if (arg[0] == '-' && arg[1] != '\0') {
       fprintf(stderr, "%s: unknown option '%s'\n", prog, arg);
       usage(stderr, prog);
@@ -106,7 +124,10 @@ int main(int argc, char **argv) {
     return EXIT_USAGE;
   }
 
+  cpu->periph.hooks.uart_tx = uart_tx;
   uint8_t status = dp32g030_cpu_run(&cpu, steps);
+  if (uart_echo >= 0)
+    fflush(stdout);
 
   int code = 0;
   switch (status) {

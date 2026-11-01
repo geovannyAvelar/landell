@@ -165,3 +165,18 @@ def test_memory_access_through_bus(image):
     assert res.returncode == 0
     assert reg(res.stdout, "r1") == emu.SRAM_BASE
     assert reg(res.stdout, "r2") == 0x5A
+
+
+def test_uart_option_echoes_tx(tmp_path):
+    # r0 = UART1 base (literal pool), r1 = 'A', then STR r1,[r0,#8] twice
+    path = tmp_path / "uart.bin"
+    code = [0x4802, 0x2141, 0x6081, 0x6081, emu.BKPT, 0xBF00]
+    path.write_bytes(emu.firmware(code, extra=struct.pack("<I", 0x4006B800)))
+    res = landell("-u", 1, path)
+    assert res.stdout.startswith("AA")
+    assert landell("-u", 0, path).stdout.startswith("halted")
+
+
+def test_uart_option_rejects_bad_index(image):
+    fw = image([emu.BKPT])
+    assert landell("-u", 3, fw).returncode == 1

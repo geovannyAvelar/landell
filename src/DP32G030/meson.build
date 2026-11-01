@@ -11,7 +11,11 @@ dp32g030_lib = static_library('dp32g030',
     'exec_branch.c',
     'exec_mem.c',
     'exec_misc.c',
-    'mmio.c'
+    'mmio.c',
+    'periph.c',
+    'periph_ext.c',
+    'scs.c',
+    'timing.c'
   ),
   include_directories : dp32g030_inc)
 

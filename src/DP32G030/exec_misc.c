@@ -42,9 +42,27 @@ DP32G030_EXEC(wfi) {
   c->sleeping = true;
 }
 
+DP32G030_EXEC(wfe) {
+  (void)in;
+  if (c->event)
+    c->event = false;
+  else
+    c->sleeping = true;
+}
+
+DP32G030_EXEC(sev) {
+  (void)in;
+  c->event = true;
+}
+
 DP32G030_EXEC(svc) {
   (void)in;
-  dp32g030_exc_enter(c, 11);
+  /* SVCall at or below the running priority escalates to HardFault. */
+  if (c->scs.prio[DP32G030_EXC_SVCALL] >= dp32g030_exec_priority(c)) {
+    dp32g030_hard_fault(c);
+    return;
+  }
+  dp32g030_exc_pend(c, DP32G030_EXC_SVCALL);
 }
 
 DP32G030_EXEC(bkpt) {
@@ -78,7 +96,10 @@ DP32G030_EXEC(mrs) {
     v = c->xpsr & 0x3Fu;
     break;
   case 8:
-    v = DP32G030_SP(c);
+    v = dp32g030_msp_get(c);
+    break;
+  case 9:
+    v = dp32g030_psp_get(c);
     break;
   case 16:
     v = c->primask;
@@ -103,13 +124,20 @@ DP32G030_EXEC(msr) {
     c->xpsr = (c->xpsr & 0x0FFFFFFFu) | (v & 0xF0000000u);
     break;
   case 8:
-    DP32G030_SP(c) = v & ~3u;
+    dp32g030_msp_set(c, v);
+    break;
+  case 9:
+    dp32g030_psp_set(c, v);
     break;
   case 16:
     c->primask = v & 1u;
     break;
   case 20:
-    c->control = v & 3u;
+    /* SPSEL is writable in thread mode only. */
+    if (!c->handler) {
+      c->control = v & 2u;
+      dp32g030_sp_sync(c);
+    }
     break;
   default:
     break;
@@ -120,7 +148,7 @@ const dp32g030_exec_entry_t dp32g030_exec_misc_entries[] = {
     {OP_UDF, dp32g030_exec_undef},
     {OP_NOP, dp32g030_exec_nop},
     {OP_YIELD, dp32g030_exec_nop},
-    {OP_SEV, dp32g030_exec_nop},
+    {OP_SEV, dp32g030_exec_sev},
     {OP_DMB, dp32g030_exec_nop},
     {OP_DSB, dp32g030_exec_nop},
     {OP_ISB, dp32g030_exec_nop},
@@ -131,7 +159,7 @@ const dp32g030_exec_entry_t dp32g030_exec_misc_entries[] = {
     {OP_REV, dp32g030_exec_rev},
     {OP_REV16, dp32g030_exec_rev16},
     {OP_REVSH, dp32g030_exec_revsh},
-    {OP_WFE, dp32g030_exec_wfi},
+    {OP_WFE, dp32g030_exec_wfe},
     {OP_WFI, dp32g030_exec_wfi},
     {OP_SVC, dp32g030_exec_svc},
     {OP_BKPT, dp32g030_exec_bkpt},

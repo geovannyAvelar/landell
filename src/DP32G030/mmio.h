@@ -8,12 +8,18 @@
 
 #define DP32G030_MMIO_REGION_SIZE 0x800u
 
-typedef bool (*dp32g030_mmio_read_fn)(dp32g030_cpu_t *c, uint32_t off,
-                                      unsigned size, uint32_t *out);
-typedef bool (*dp32g030_mmio_write_fn)(dp32g030_cpu_t *c, uint32_t off,
-                                       unsigned size, uint32_t val);
+struct dp32g030_region;
 
-typedef struct {
+typedef bool (*dp32g030_mmio_read_fn)(dp32g030_cpu_t *c,
+                                      const struct dp32g030_region *r,
+                                      uint32_t off, unsigned size,
+                                      uint32_t *out);
+typedef bool (*dp32g030_mmio_write_fn)(dp32g030_cpu_t *c,
+                                       const struct dp32g030_region *r,
+                                       uint32_t off, unsigned size,
+                                       uint32_t val);
+
+typedef struct dp32g030_region {
   const char *name;
   uint32_t base;
   uint32_t size;
@@ -24,3 +30,5 @@ typedef struct {
 } dp32g030_region_t;
 
 const dp32g030_region_t *dp32g030_mmio_find(uint32_t addr);
+/* Position of `r` in the peripheral table, or -1 for the SCS. */
+int dp32g030_mmio_index(const dp32g030_region_t *r);

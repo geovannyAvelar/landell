@@ -103,13 +103,13 @@ class TestRules:
         assert read(SRAM_BASE, size)[0] is False
         assert write(SRAM_BASE, size, 0) is False
 
-    @pytest.mark.parametrize("addr", [0x10000, 0x1FFFFFFC, 0x40000000, 0x40008000, 0xE000E010, 0xFFFFFFFC])
+    @pytest.mark.parametrize("addr", [0x10000, 0x1FFFFFFC, 0x40002000, 0x40008000, 0xE0000000, 0xE000F000, 0xFFFFFFFC])
     def test_unmapped_faults(self, read, write, addr):
         assert read(addr, 4)[0] is False
         assert write(addr, 4, 1) is False
 
     def test_failed_read_leaves_out_untouched(self, read):
-        assert read(0x40000000, 4) == (False, 0xDEADBEEF)
+        assert read(0x40002000, 4) == (False, 0xDEADBEEF)
 
     def test_flash_and_sram_do_not_alias(self, read, write):
         write(SRAM_BASE, 4, 0x12345678)
@@ -123,7 +123,7 @@ class TestThroughCpu:
         assert res.r[3] == 0
 
     def test_unmapped_str_faults(self, lib):
-        res = emu.run(lib, [0x6008, 0x2301], regs={0: 1, 1: 0x40000000})
+        res = emu.run(lib, [0x6008, 0x2301], regs={0: 1, 1: 0x40002000})
         assert res.halted
         assert res.r[3] == 0
 

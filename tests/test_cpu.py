@@ -82,7 +82,7 @@ def test_run_undefined_instruction(lib):
 
 
 def test_run_entry_outside_flash_faults(lib):
-    ptr = new(lib, struct.pack("<II", emu.SRAM_TOP, emu.SRAM_BASE | 1) + bytes(8))
+    ptr = new(lib, struct.pack("<II", emu.SRAM_TOP, 0x10000000 | 1) + bytes(8))
     try:
         import ctypes
 
