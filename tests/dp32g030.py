@@ -96,6 +96,7 @@ I2C_START_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
 I2C_WRITE_CB = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint8)
 I2C_READ_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, ctypes.c_bool)
 I2C_STOP_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
+BK4819_FREQ_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32)
 
 
 class Spi(ctypes.Structure):
@@ -264,6 +265,22 @@ class Iic(ctypes.Structure):
     ]
 
 
+class Bk4819(ctypes.Structure):
+    _fields_ = [
+        ("regs", ctypes.c_uint16 * 128),
+        ("selected", ctypes.c_bool),
+        ("prev_scn", ctypes.c_bool),
+        ("prev_scl", ctypes.c_bool),
+        ("prev_sda_in", ctypes.c_bool),
+        ("addr_phase", ctypes.c_bool),
+        ("reading", ctypes.c_bool),
+        ("bitpos", ctypes.c_uint),
+        ("addr", ctypes.c_uint8),
+        ("shift", ctypes.c_uint16),
+        ("squelch_open", ctypes.c_bool),
+    ]
+
+
 class Hooks(ctypes.Structure):
     _fields_ = [
         ("user", ctypes.c_void_p),
@@ -274,6 +291,7 @@ class Hooks(ctypes.Structure):
         ("i2c_write", I2C_WRITE_CB),
         ("i2c_read", I2C_READ_CB),
         ("i2c_stop", I2C_STOP_CB),
+        ("bk4819_freq_change", BK4819_FREQ_CB),
     ]
 
 
@@ -297,6 +315,7 @@ class Periph(ctypes.Structure):
         ("wwdt", Wwdt),
         ("aes", Aes),
         ("iic", Iic * 2),
+        ("bk4819", Bk4819),
         ("hooks", Hooks),
     ]
 
@@ -375,6 +394,13 @@ def load_lib(workdir):
     lib.dp32g030_pwm_plus_set_brake.argtypes = [
         ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32,
     ]
+    lib.dp32g030_bk4819_set_signal.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint16, ctypes.c_uint8, ctypes.c_uint8,
+    ]
+    lib.dp32g030_bk4819_frequency.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_bk4819_frequency.restype = ctypes.c_uint32
+    lib.dp32g030_bk4819_squelch_open.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_bk4819_squelch_open.restype = ctypes.c_bool
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,

@@ -58,6 +58,12 @@ uint64_t dp32g030_pwm_plus_next_event(const dp32g030_cpu_t *c);
 void dp32g030_rtc_wdt_tick(dp32g030_cpu_t *c, uint64_t cycles);
 uint64_t dp32g030_rtc_wdt_next_event(const dp32g030_cpu_t *c);
 
+/* BK4819 (bk4819.c): called from dp32g030_gpio_write for GPIOC, with the
+   port's effective pin levels before/after this write and its current
+   direction register. */
+void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
+                               uint32_t after, uint32_t dir);
+
 /* Shared prescaler helper (defined in timer_pwm.c): run a shared-divider
    up-counter block forward by `cycles` core clocks, firing `tick_one` once
    per elapsed (div+1)-cycle period; and compute the core clocks until

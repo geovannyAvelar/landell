@@ -142,6 +142,8 @@ bool dp32g030_gpio_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   else
     g->dir = val;
   dp32g030_gpio_notify(c, port, before);
+  if (port == 2)
+    dp32g030_bk4819_gpio_edge(c, before, dp32g030_gpio_pins(c, port), g->dir);
   return true;
 }
 

@@ -255,6 +255,24 @@ typedef struct {
   bool busy;
 } dp32g030_iic_t;
 
+/* BK4819: an external RF transceiver chip, bit-banged over 3 GPIOC pins
+   (not a DP32G030 peripheral). SCN=pin0 (chip select), SCL=pin1 (clock),
+   SDA=pin2 (data); 8-bit address (bit 7 = read) then 16 bits of data,
+   MSB first. First slice: a generic register file plus the RX
+   measurement path (frequency, RSSI/glitch/noise, RSSI-threshold
+   squelch). See README for what's not modeled yet. */
+typedef struct {
+  uint16_t regs[128];
+  bool selected;      /* SCN low: mid-transaction */
+  bool prev_scn, prev_scl, prev_sda_in;
+  bool addr_phase;    /* decoding the 8-bit address/cmd byte */
+  bool reading;       /* decoding/streaming a 16-bit read, vs. a write */
+  unsigned bitpos;
+  uint8_t addr;
+  uint16_t shift;
+  bool squelch_open;
+} dp32g030_bk4819_t;
+
 /* Host callbacks. Any may be NULL. */
 typedef struct {
   void *user;
@@ -271,6 +289,8 @@ typedef struct {
   uint8_t (*i2c_read)(void *user, unsigned iic, bool ack);
   /* I2C master: stop condition. */
   void (*i2c_stop)(void *user, unsigned iic);
+  /* BK4819: firmware tuned a new frequency (REG_38/REG_39), raw units. */
+  void (*bk4819_freq_change)(void *user, uint32_t freq);
 } dp32g030_hooks_t;
 
 typedef struct {
@@ -289,6 +309,7 @@ typedef struct {
   dp32g030_wwdt_t wwdt;
   dp32g030_aes_t aes;
   dp32g030_iic_t iic[2];
+  dp32g030_bk4819_t bk4819;
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 
@@ -341,3 +362,15 @@ void dp32g030_timer_plus_set_hall(dp32g030_cpu_t *c, unsigned unit,
 /* Drive PWM_PLUS `unit`'s 3 brake lines (bit n = braken), raw level. */
 void dp32g030_pwm_plus_set_brake(dp32g030_cpu_t *c, unsigned unit,
                                  uint32_t mask);
+
+/* BK4819: set the simulated received signal. `rssi` and the open/close
+   thresholds in REG_78 share the same raw 9-bit, 0.5 dB/step scale;
+   `glitch`/`noise` are stored but do not yet affect squelch (see
+   README). Recomputes squelch and fires REG_02 FOUND/LOST on change. */
+void dp32g030_bk4819_set_signal(dp32g030_cpu_t *c, uint16_t rssi,
+                                uint8_t glitch, uint8_t noise);
+/* The frequency last written to REG_38/REG_39 (raw units, firmware's
+   own scale - typically 10 Hz/LSB). */
+uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c);
+/* Whether the RSSI-threshold squelch is currently open. */
+bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c);
