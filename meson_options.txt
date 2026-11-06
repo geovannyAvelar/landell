@@ -1,0 +1,4 @@
+option('gui', type : 'feature', value : 'disabled',
+  description : 'Build landell-gui (needs SDL2 and a Skia build)')
+option('skia_dir', type : 'string', value : '',
+  description : 'Skia checkout built with scripts/build-skia.sh')
