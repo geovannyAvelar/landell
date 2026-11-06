@@ -29,7 +29,7 @@ namespace {
 
 constexpr int kLcdWidth = 128;
 constexpr int kLcdHeight = 64;
-constexpr int kDefaultScale = 6;
+constexpr int kDefaultScale = 4;
 constexpr unsigned kBatteryAdcChannel = 9;
 constexpr unsigned kBatteryAdcValue = 2000;
 constexpr size_t kDefaultScreenshotSteps = 10000000;
@@ -338,7 +338,8 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   }
   SDL_Window *window = SDL_CreateWindow(
       "landell", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      kLcdWidth * o.scale, (kLcdHeight + kPanelUnits) * o.scale, 0);
+      kLcdWidth * o.scale, (kLcdHeight + kPanelUnits) * o.scale,
+      SDL_WINDOW_RESIZABLE);
   SDL_Renderer *renderer =
       window ? SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED) : nullptr;
   SDL_Texture *texture =
@@ -357,6 +358,10 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     return EXIT_USAGE;
   }
 
+  // Logical size makes SDL map mouse coordinates back if the window manager
+  // resizes the window to fit a small screen.
+  SDL_RenderSetLogicalSize(renderer, kLcdWidth * o.scale,
+                           (kLcdHeight + kPanelUnits) * o.scale);
   Canvas canvas(o.scale);
   Held held{pad, ui, {}, false, Key::K0};
   Pacer pacer;

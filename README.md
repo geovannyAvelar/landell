@@ -141,7 +141,7 @@ build-gui/gui/landell-gui firmware.bin
 landell-gui [--scale N] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
-- `--scale N`: window pixels per LCD pixel, 1-16 (default 6).
+- `--scale N`: window pixels per LCD pixel, 1-16 (default 4).
 - `--adc CH=VAL`: set a SARADC channel (repeatable). Channel 9 (battery) defaults to 2000, otherwise the firmware shows no UI.
 - `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.
 - `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
