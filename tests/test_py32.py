@@ -360,3 +360,36 @@ def test_py32_adc_continuous_reconverts_after_dr_read(lib, py32):
     lib.dp32g030_adc_set_input(cpu, 2, 20)
     assert rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC  # converted again
     assert rd(lib, cpu, ADC1 + ADC_DR)[1] == 20
+
+
+# ---- SPI interrupts -------------------------------------------------------
+
+SPI2 = 0x40003800
+CR2_RXNEIE, CR2_TXEIE = 1 << 6, 1 << 7
+IRQ_SPI1, IRQ_SPI2 = 25, 26
+
+
+def irq_line(cpu, n):
+    return bool(cpu.contents.scs.irq_lines & (1 << n))
+
+
+def test_py32_spi_txe_interrupt(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    assert not irq_line(cpu, IRQ_SPI2)
+    wr(lib, cpu, SPI2 + SPI_CR2, CR2_TXEIE)
+    assert irq_line(cpu, IRQ_SPI2)  # TXE is always set
+    assert not irq_line(cpu, IRQ_SPI1)
+    wr(lib, cpu, SPI2 + SPI_CR2, 0)
+    assert not irq_line(cpu, IRQ_SPI2)
+
+
+def test_py32_spi_rxne_interrupt(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, SPI1 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    wr(lib, cpu, SPI1 + SPI_CR2, CR2_RXNEIE)
+    assert not irq_line(cpu, IRQ_SPI1)
+    wr(lib, cpu, SPI1 + SPI_DR, 0x01, 1)
+    assert irq_line(cpu, IRQ_SPI1)
+    rd(lib, cpu, SPI1 + SPI_DR)  # reading DR clears RXNE
+    assert not irq_line(cpu, IRQ_SPI1)

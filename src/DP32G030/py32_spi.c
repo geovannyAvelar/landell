@@ -1,5 +1,6 @@
 #include "periph.h"
 
+#include "exc.h"
 #include "socdesc.h"
 
 /* PY32F071 SPI, STM32-style: CR1 (MSTR bit 2, SPE bit 6), CR2, SR (RXNE bit
@@ -10,10 +11,24 @@
 #define CR1_SPE (1u << 6)
 #define SR_RXNE (1u << 0)
 #define SR_TXE (1u << 1)
+#define CR2_RXNEIE (1u << 6)
+#define CR2_TXEIE (1u << 7)
+#define IRQ_SPI1 25u
+#define IRQ_SPI2 26u
+
+static void spi_update_irq(dp32g030_cpu_t *c, unsigned n) {
+  const dp32g030_py32_spi_t *s = &c->py32.spi[n - 1];
+  bool line = ((s->cr2 & CR2_TXEIE) != 0) /* TXE is always set */ ||
+              ((s->cr2 & CR2_RXNEIE) && s->rxne);
+
+  dp32g030_irq_set(c, n == 1 ? IRQ_SPI1 : IRQ_SPI2, line);
+}
 
 void py32_spi_reset(dp32g030_cpu_t *c) {
   c->py32.spi[0] = (dp32g030_py32_spi_t){0};
   c->py32.spi[1] = (dp32g030_py32_spi_t){0};
+  spi_update_irq(c, 1);
+  spi_update_irq(c, 2);
 }
 
 bool py32_spi_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
@@ -28,6 +43,7 @@ bool py32_spi_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
   case 0x0C:
     v = s->rx;
     s->rxne = false;
+    spi_update_irq(c, n);
     break;
   default: return false;
   }
@@ -70,5 +86,6 @@ bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
     break;
   default: return false;
   }
+  spi_update_irq(c, n);
   return true;
 }
