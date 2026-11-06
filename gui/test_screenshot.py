@@ -42,6 +42,13 @@ with tempfile.TemporaryDirectory() as d:
     r = run("--adc", "16=1", str(fw))
     check(r.returncode == 1 and "adc" in r.stderr, f"adc: {r}")
 
+    r = run("-a", "16=1", str(fw))
+    check(r.returncode == 1 and "adc" in r.stderr, f"-a bad: {r}")
+
+    png = Path(d) / "short.png"
+    r = run("-a", "9=100", "--screenshot", str(png), "--steps", "1000", str(fw))
+    check(r.returncode == 0 and png.exists(), f"-a short form: {r}")
+
     png = Path(d) / "out.png"
     r = run("--screenshot", str(png), "--steps", "1000", "--scale", "2", str(fw))
     check(r.returncode == 0, f"screenshot exit {r.returncode}: {r.stderr}")

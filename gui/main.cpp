@@ -60,11 +60,11 @@ void lcd_updated(void *user) { static_cast<LcdState *>(user)->dirty = true; }
 void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
-      "usage: %s [--scale N] [--adc CH=VAL] [--screenshot out.png "
+      "usage: %s [--scale N] [-a|--adc CH=VAL] [--screenshot out.png "
       "[--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
-      "  --adc CH=VAL       set SARADC channel CH (0-15) to 12-bit VAL; "
+      "  -a, --adc CH=VAL   set SARADC channel CH (0-15) to 12-bit VAL; "
       "repeatable\n"
       "  --screenshot FILE  run headless, write one frame as PNG and exit\n"
       "  --steps N          instructions to run before the screenshot\n"
@@ -123,7 +123,7 @@ int parse_args(int argc, char **argv, Options *o) {
       o->screenshot = argv[i];
       continue;
     }
-    if (!std::strcmp(arg, "--adc")) {
+    if (!std::strcmp(arg, "--adc") || !std::strcmp(arg, "-a")) {
       unsigned long ch, val;
 
       if (++i >= argc || o->adc_n >= 16 ||
@@ -237,6 +237,11 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
   for (bool quit = false; !quit;) {
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
+      if (ev.type == SDL_WINDOWEVENT &&
+          (ev.window.event == SDL_WINDOWEVENT_EXPOSED ||
+           ev.window.event == SDL_WINDOWEVENT_RESTORED ||
+           ev.window.event == SDL_WINDOWEVENT_SHOWN))
+        lcd->dirty = true; // back buffer is undefined after a present
       if (ev.type == SDL_QUIT ||
           (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE))
         quit = true;
