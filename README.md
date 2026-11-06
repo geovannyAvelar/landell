@@ -86,10 +86,21 @@ meson setup build
 meson compile -C build
 ```
 
+## Supported chips
+
+| Chip | Radios | Image |
+|------|--------|-------|
+| `dp32g030` | UV-K5 V1/V2 | raw binary, vector table first (flash at `0x0`) |
+| `py32f071` | UV-K5 V3, UV-K1 | raw *app* image (vector table first, linked at `0x08002800`, e.g. the F4HWN Fusion `.bin`) |
+
+`--soc auto` (the default) picks the chip from the image's reset vector: an address in `0x08000000..0x0801FFFF` selects `py32f071`, anything else `dp32g030`. `--soc dp32g030|py32f071` forces one, and an image that does not fit the chip is refused.
+
+PY32F071 notes: the Cortex-M0+ VTOR is modeled (the bootloader hand-off is emulated: the app boots with its vector table at `0x08002800`, clocks running). Peripherals behave only as far as the F4HWN Fusion firmware needs: GPIO, SPI (the LCD on SPI1, the external PY25Q16 flash on SPI2 with DMA), ADC, DMA, and the BK4819 on PF9/PB8/PB9. The firmware keeps its settings and calibration in that 2 MiB flash (empty at start); `landell-gui` presets a factory-style battery calibration (flash `0x010140`) and the battery ADC (channel 8) so the firmware boots to its normal screen. Not modeled yet: the V3/K1 key matrix (the panel is drawn but its keys do nothing on `py32f071`), USB, audio, the I2C devices, and anything the Fusion firmware does not touch on its way to the main screen.
+
 ## Usage
 
 ```sh
-build/landell [-s steps] [-u uart] firmware.bin
+build/landell [-s steps] [-u uart] [--soc chip] firmware.bin
 ```
 
 The image must be a raw binary starting with the Cortex-M vector table (initial SP, then reset vector). It runs until `bkpt`, a fault, or the step limit (default 10,000,000). The final register state is printed.
@@ -138,11 +149,12 @@ build-gui/gui/landell-gui firmware.bin
 ```
 
 ```sh
-landell-gui [--scale N] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
+landell-gui [--scale N] [--soc CHIP] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
+- `--soc CHIP`: `auto` (default), `dp32g030` or `py32f071`, as for `landell`.
 - `--scale N`: window pixels per LCD pixel, 1-16 (default 4).
-- `--adc CH=VAL`: set a SARADC channel (repeatable). Channel 9 (battery) defaults to 2000, otherwise the firmware shows no UI.
+- `--adc CH=VAL`: set an ADC channel (repeatable), after the board defaults. The defaults put the battery at a sane level (SARADC channel 9 on `dp32g030`, ADC channel 8 on `py32f071`); without that the firmware shows no UI.
 - `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.
 - `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
 - Escape or closing the window quits.
