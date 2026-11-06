@@ -14,7 +14,10 @@ dp32g030_lib = static_library('dp32g030',
     'mmio.c',
     'periph.c',
     'periph_ext.c',
+    'pwm_plus.c',
     'scs.c',
+    'timer_plus.c',
+    'timer_pwm.c',
     'timing.c'
   ),
   include_directories : dp32g030_inc)

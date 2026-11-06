@@ -18,9 +18,21 @@ Implemented:
 - SPI0/1 master with RX FIFO, interrupts and a host transfer hook (used for the LCD and similar).
 - SARADC: a conversion copies host-set inputs into `CHn` and raises the FIFO flags.
 - CRC: CCITT, CRC-8, CRC-16 and CRC-32 (checked against the standard test vectors; input/output reversal bits are a best guess).
-- SYSCON, PMU, PORTCON, flash control, timers, PWM, I2C, DMA, RTC, watchdogs and AES as plain read/write register files (no behaviour yet).
+- TIMER_BASE0-2: two free-running 16-bit up-counters (HIGH/LOW) each with a load/compare value and interrupt.
+- TIMER_PLUS0-1: as TIMER_BASE, plus a count mode (counts edges on a host-driven pin) and an input-capture mode (latches the free-running count on a pin edge), and a HALL mode that decodes 3 host-driven sensor lines into edge interrupts.
+- PWM_BASE0-1: a 16-bit up-counter wrapping at a configurable period, with 3 channels compared against flip points and overflow/compare interrupts.
+- PWM_PLUS0-1: as PWM_BASE, plus complementary (CHn/CHnN) outputs, up/down/center-aligned counting, single-shot or looping, host-driven brake inputs, and output masking.
+- SYSCON, PMU, PORTCON, flash control, I2C, DMA, RTC, watchdogs and AES as plain read/write register files (no behaviour yet).
 
-Not yet implemented: behaviour for the register-file blocks above, clock gating, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps.
+Not yet implemented: behaviour for the register-file blocks above, clock gating, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps; the register layout for TIMER_BASE/PLUS and PWM_BASE/PLUS above comes from the `dp32g030` Rust SVD (itself derived from the UV-K5 firmware's register definitions), not from this project's own headers.
+
+TIMER_BASE/PLUS and PWM_BASE/PLUS model limits:
+
+- A TIMER_BASE/PLUS counter is assumed to reload to 0 on reaching its load value; the datasheet says only that a "status signal is generated".
+- PWM_PLUS's PERIOD/CHn_COMP/CHn_DT/TRIG_COMP writes take effect immediately. The real hardware's shadow-register latching (on SWLOAD or the cycle autoreload counter) is not modeled, so `AUTORELOAD_IE`/`AUTORELOAD_IF` never fire.
+- PWM_PLUS dead-time (`CHn_DT`) and brake digital filtering (`BRAKE_FILTER`) are stored but have no timing effect: channel outputs switch instantly and brake overrides apply as soon as the line is asserted.
+- PWM_PLUS's internal trigger point (`TRIG_COMP`/`TRIG_CFG`) only raises its own interrupt flags; nothing else in the emulator consumes it (e.g. to trigger an SARADC conversion).
+- TIMER_PLUS's DMA-read-of-capture-value bits are stored but have no effect (the DMA peripheral itself has no behaviour yet).
 
 Model limits:
 

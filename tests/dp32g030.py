@@ -122,6 +122,76 @@ class Crc(ctypes.Structure):
     _fields_ = [("cr", ctypes.c_uint32), ("iv", ctypes.c_uint32), ("state", ctypes.c_uint32)]
 
 
+class TimerBase(ctypes.Structure):
+    _fields_ = [
+        ("en", ctypes.c_uint32),
+        ("div", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("high_load", ctypes.c_uint32),
+        ("high_cnt", ctypes.c_uint32),
+        ("low_load", ctypes.c_uint32),
+        ("low_cnt", ctypes.c_uint32),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
+class PwmBase(ctypes.Structure):
+    _fields_ = [
+        ("en", ctypes.c_uint32),
+        ("div", ctypes.c_uint32),
+        ("con", ctypes.c_uint32),
+        ("period", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("cnt", ctypes.c_uint32),
+        ("comp", ctypes.c_uint32 * 3),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
+class TimerPlus(ctypes.Structure):
+    _fields_ = [
+        ("en", ctypes.c_uint32),
+        ("div", ctypes.c_uint32),
+        ("ctr", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("high_load", ctypes.c_uint32),
+        ("high_cnt", ctypes.c_uint32),
+        ("high_cval", ctypes.c_uint32),
+        ("low_load", ctypes.c_uint32),
+        ("low_cnt", ctypes.c_uint32),
+        ("low_cval", ctypes.c_uint32),
+        ("hall_val", ctypes.c_uint32),
+        ("ext_level", ctypes.c_uint32 * 2),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
+class PwmPlus(ctypes.Structure):
+    _fields_ = [
+        ("cfg", ctypes.c_uint32),
+        ("gen", ctypes.c_uint32),
+        ("clksrc", ctypes.c_uint32),
+        ("brake_cfg", ctypes.c_uint32),
+        ("mask_lev", ctypes.c_uint32),
+        ("period", ctypes.c_uint32),
+        ("comp", ctypes.c_uint32 * 3),
+        ("dt", ctypes.c_uint32 * 3),
+        ("trig_comp", ctypes.c_uint32),
+        ("trig_cfg", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("mask_en", ctypes.c_uint32),
+        ("cnt", ctypes.c_uint32),
+        ("counting_down", ctypes.c_bool),
+        ("brake_level", ctypes.c_uint32),
+        ("ch_level", ctypes.c_uint32),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
 class Hooks(ctypes.Structure):
     _fields_ = [
         ("user", ctypes.c_void_p),
@@ -142,6 +212,10 @@ class Periph(ctypes.Structure):
         ("spi", Spi * 2),
         ("adc", Adc),
         ("crc", Crc),
+        ("timer_base", TimerBase * 3),
+        ("timer_plus", TimerPlus * 2),
+        ("pwm_base", PwmBase * 2),
+        ("pwm_plus", PwmPlus * 2),
         ("hooks", Hooks),
     ]
 
@@ -211,6 +285,15 @@ def load_lib(workdir):
     lib.dp32g030_uart_rx.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint8]
     lib.dp32g030_adc_set_input.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32]
     lib.dp32g030_cpu_reset.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_timer_plus_set_ext.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint, ctypes.c_bool,
+    ]
+    lib.dp32g030_timer_plus_set_hall.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32,
+    ]
+    lib.dp32g030_pwm_plus_set_brake.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32,
+    ]
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,

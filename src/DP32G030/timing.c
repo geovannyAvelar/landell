@@ -65,11 +65,15 @@ unsigned dp32g030_insn_cycles(const dp32g030_insn_t *in, bool taken) {
 void dp32g030_soc_tick(dp32g030_cpu_t *c, uint64_t cycles) {
   dp32g030_systick_tick(c, cycles);
   dp32g030_uart_tick(c);
+  dp32g030_timer_pwm_tick(c, cycles);
 }
 
 uint64_t dp32g030_soc_next_event(const dp32g030_cpu_t *c) {
   uint64_t a = dp32g030_systick_next_event(c);
   uint64_t b = dp32g030_uart_next_event(c);
+  uint64_t d = dp32g030_timer_pwm_next_event(c);
 
-  return a < b ? a : b;
+  if (b < a)
+    a = b;
+  return d < a ? d : a;
 }

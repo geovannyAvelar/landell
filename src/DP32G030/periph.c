@@ -16,6 +16,19 @@ void dp32g030_periph_reset(dp32g030_cpu_t *c) {
   p->hooks = hooks;
   for (unsigned i = 0; i < 3; i++)
     p->gpio[i].in = in[i];
+  for (unsigned i = 0; i < 3; i++) {
+    p->timer_base[i].high_load = 0xFFFFu;
+    p->timer_base[i].low_load = 0xFFFFu;
+  }
+  for (unsigned i = 0; i < 2; i++) {
+    p->timer_plus[i].ctr = 0x600060u;
+    p->timer_plus[i].high_load = 0xFFFFu;
+    p->timer_plus[i].low_load = 0xFFFFu;
+  }
+  for (unsigned i = 0; i < 2; i++)
+    p->pwm_base[i].cnt = 0xFFFFu;
+  for (unsigned i = 0; i < 2; i++)
+    p->pwm_plus[i].period = 0xFFFFu;
 }
 
 /* ---- generic register file ---------------------------------------- */

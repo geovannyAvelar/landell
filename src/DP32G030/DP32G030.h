@@ -159,6 +159,58 @@ typedef struct {
   uint32_t cr, iv, state;
 } dp32g030_crc_t;
 
+/* TIMER_BASE0-2: two free-running 16-bit up-counters (HIGH/LOW) sharing one
+   clock divider. Each reloads to 0 and raises an interrupt on reaching its
+   own *_LOAD value (auto-reload; the datasheet does not say explicitly, see
+   README). */
+typedef struct {
+  uint32_t en, div, ie, iflags;
+  uint32_t high_load, high_cnt;
+  uint32_t low_load, low_cnt;
+  uint32_t presc; /* core clocks left until the next prescaled tick */
+} dp32g030_timer_base_t;
+
+/* PWM_BASE0-1: one 16-bit up-counter wrapping at PERIOD, three channels each
+   comparing the counter against a flip point. */
+typedef struct {
+  uint32_t en, div, con, period, ie, iflags, cnt;
+  uint32_t comp[3];
+  uint32_t presc;
+} dp32g030_pwm_base_t;
+
+#define DP32G030_TIMERPLUS_MODE_TIMING 0u
+#define DP32G030_TIMERPLUS_MODE_COUNT 1u
+#define DP32G030_TIMERPLUS_MODE_CAPTURE 2u
+#define DP32G030_TIMERPLUS_MODE_HALL 3u /* LOW half only */
+
+/* TIMER_PLUS0-1: like TIMER_BASE, but HIGH/LOW can each run from an external
+   pin (count/capture mode) instead of the prescaled clock, and LOW can run
+   as a 3-line HALL sensor decoder. */
+typedef struct {
+  uint32_t en, div, ctr, ie, iflags;
+  uint32_t high_load, high_cnt, high_cval;
+  uint32_t low_load, low_cnt, low_cval;
+  uint32_t hall_val;
+  uint32_t ext_level[2]; /* raw host-driven level of timer_in0/timer_in1 */
+  uint32_t presc;
+} dp32g030_timer_plus_t;
+
+/* PWM_PLUS0-1: PWM_BASE plus complementary (CHn/CHnN) outputs, dead-time,
+   center-aligned/up-down counting and brake inputs. PERIOD/COMPn/DTn/
+   TRIG_COMP writes take effect immediately: the real shadow-register
+   latching on SWLOAD or the cycle autoreload counter is not modeled (see
+   README). */
+typedef struct {
+  uint32_t cfg, gen, clksrc, brake_cfg, mask_lev;
+  uint32_t period, comp[3], dt[3], trig_comp, trig_cfg;
+  uint32_t ie, iflags, mask_en;
+  uint32_t cnt;
+  bool counting_down; /* current direction in center-aligned mode */
+  uint32_t brake_level; /* raw host-driven level of brake0..2 */
+  uint32_t ch_level;    /* bit per channel: 0 CH0 1 CH0N 2 CH1 3 CH1N 4 CH2 5 CH2N */
+  uint32_t presc;
+} dp32g030_pwm_plus_t;
+
 /* Host callbacks. Any may be NULL. */
 typedef struct {
   void *user;
@@ -176,6 +228,10 @@ typedef struct {
   dp32g030_spi_t spi[2];
   dp32g030_adc_t adc;
   dp32g030_crc_t crc;
+  dp32g030_timer_base_t timer_base[3];
+  dp32g030_timer_plus_t timer_plus[2];
+  dp32g030_pwm_base_t pwm_base[2];
+  dp32g030_pwm_plus_t pwm_plus[2];
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 
@@ -217,3 +273,14 @@ void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value);
 
 /* Drive external interrupt line `irq` (0..31). Level sensitive. */
 void dp32g030_irq_set(dp32g030_cpu_t *c, unsigned irq, bool level);
+
+/* Drive TIMER_PLUS `unit`'s timer_in0/timer_in1 pin (`which` 0 or 1). Used
+   by count and input-capture modes. */
+void dp32g030_timer_plus_set_ext(dp32g030_cpu_t *c, unsigned unit,
+                                 unsigned which, bool level);
+/* Drive TIMER_PLUS `unit`'s 3 HALL sensor lines (bit n = HALLn). */
+void dp32g030_timer_plus_set_hall(dp32g030_cpu_t *c, unsigned unit,
+                                  uint32_t mask);
+/* Drive PWM_PLUS `unit`'s 3 brake lines (bit n = braken), raw level. */
+void dp32g030_pwm_plus_set_brake(dp32g030_cpu_t *c, unsigned unit,
+                                 uint32_t mask);
