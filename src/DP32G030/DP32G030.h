@@ -379,12 +379,23 @@ typedef struct {
   uint16_t input[PY32_ADC_CHANNELS]; /* levels set by the host */
 } dp32g030_py32_adc_t;
 
+#define PY32_DMA_CHANNELS 7
+
+typedef struct {
+  uint32_t isr;
+  uint32_t ccr[PY32_DMA_CHANNELS], cndtr[PY32_DMA_CHANNELS];
+  uint32_t cpar[PY32_DMA_CHANNELS], cmar[PY32_DMA_CHANNELS];
+  uint32_t cur_p[PY32_DMA_CHANNELS], cur_m[PY32_DMA_CHANNELS]; /* running */
+  bool busy; /* guards against re-entry from DMA-initiated bus accesses */
+} dp32g030_py32_dma_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
   dp32g030_py32_gpio_t gpio[PY32_NGPIO];
   dp32g030_py32_spi_t spi[2]; /* SPI1, SPI2 */
   dp32g030_py32_adc_t adc;
+  dp32g030_py32_dma_t dma;
 } dp32g030_py32_t;
 
 typedef struct {

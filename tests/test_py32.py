@@ -393,3 +393,91 @@ def test_py32_spi_rxne_interrupt(lib, py32):
     assert irq_line(cpu, IRQ_SPI1)
     rd(lib, cpu, SPI1 + SPI_DR)  # reading DR clears RXNE
     assert not irq_line(cpu, IRQ_SPI1)
+
+
+# ---- DMA ----------------------------------------------------------------
+
+DMA1 = 0x40020000
+DMA_ISR, DMA_IFCR = 0x00, 0x04
+CCR_EN, CCR_TCIE, CCR_DIR, CCR_PINC, CCR_MINC = 1 << 0, 1 << 1, 1 << 4, 1 << 6, 1 << 7
+CCR_MEM2MEM = 1 << 14
+
+
+def ch(n, reg):  # channel n (1..7); reg: 0 CCR, 4 CNDTR, 8 CPAR, 12 CMAR
+    return DMA1 + 0x08 + 0x14 * (n - 1) + reg
+
+
+def tcif(n):
+    return 1 << (4 * (n - 1) + 1)
+
+
+def dma_setup(lib, cpu, n, ccr, count, par, mar):
+    wr(lib, cpu, ch(n, 4), count)
+    wr(lib, cpu, ch(n, 8), par)
+    wr(lib, cpu, ch(n, 12), mar)
+    wr(lib, cpu, ch(n, 0), ccr)
+
+
+def test_py32_dma_mem2mem(lib, py32):
+    cpu = py32(app_image())
+    src, dst = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    for i, b in enumerate(b"\x11\x22\x33\x44"):
+        wr(lib, cpu, src + i, b, 1)
+    dma_setup(lib, cpu, 1, CCR_EN | CCR_MEM2MEM | CCR_PINC | CCR_MINC, 4, src, dst)
+    assert rd(lib, cpu, dst) == (True, 0x44332211)
+    assert rd(lib, cpu, ch(1, 4))[1] == 0  # CNDTR counted down
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(1)
+    assert not rd(lib, cpu, ch(1, 0))[1] & CCR_EN  # EN clears on completion
+
+
+def test_py32_dma_16bit_words(lib, py32):
+    cpu = py32(app_image())
+    src, dst = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    wr(lib, cpu, src, 0xAABBCCDD)
+    wr(lib, cpu, src + 4, 0x11223344)
+    size16 = (1 << 8) | (1 << 10)  # PSIZE = MSIZE = 16 bit
+    dma_setup(lib, cpu, 2, CCR_EN | CCR_MEM2MEM | CCR_PINC | CCR_MINC | size16, 4, src, dst)
+    assert rd(lib, cpu, dst) == (True, 0xAABBCCDD)
+    assert rd(lib, cpu, dst + 4) == (True, 0x11223344)
+
+
+def test_py32_dma_tc_interrupt_and_flag_clear(lib, py32):
+    cpu = py32(app_image())
+    src, dst = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    dma_setup(lib, cpu, 1, CCR_EN | CCR_TCIE | CCR_MEM2MEM | CCR_PINC | CCR_MINC, 2, src, dst)
+    assert irq_line(cpu, 9)  # channel 1
+    wr(lib, cpu, DMA1 + DMA_IFCR, 1 << 1)  # CTCIF1
+    assert not irq_line(cpu, 9)
+    assert not rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(1)
+
+
+@pytest.mark.parametrize("n,irq", [(2, 10), (3, 10), (4, 11), (7, 11)])
+def test_py32_dma_irq_grouping(lib, py32, n, irq):
+    cpu = py32(app_image())
+    dma_setup(lib, cpu, n, CCR_EN | CCR_TCIE | CCR_MEM2MEM | CCR_PINC | CCR_MINC, 1,
+              SRAM_BASE + 0x100, SRAM_BASE + 0x200)
+    assert irq_line(cpu, irq)
+
+
+def test_py32_dma_spi_full_duplex(lib, py32):
+    cpu = py32(app_image())
+    seen = []
+
+    def xfer(user, spi, tx):
+        seen.append((spi, tx))
+        return (tx + 1) & 0xFF
+
+    cb = emu.SPI_CB(xfer)
+    cpu.contents.periph.hooks.spi_xfer = cb
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    txbuf, rxbuf = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    for i, b in enumerate((0x10, 0x20, 0x30)):
+        wr(lib, cpu, txbuf + i, b, 1)
+    # RX channel first (as a driver does), then TX which clocks the bus
+    dma_setup(lib, cpu, 2, CCR_EN | CCR_MINC, 3, SPI2 + SPI_DR, rxbuf)
+    assert seen == []  # nothing moves until TX starts
+    dma_setup(lib, cpu, 3, CCR_EN | CCR_DIR | CCR_MINC, 3, SPI2 + SPI_DR, txbuf)
+    assert seen == [(2, 0x10), (2, 0x20), (2, 0x30)]
+    assert [rd(lib, cpu, rxbuf + i, 1)[1] for i in range(3)] == [0x11, 0x21, 0x31]
+    isr = rd(lib, cpu, DMA1 + DMA_ISR)[1]
+    assert isr & tcif(2) and isr & tcif(3)

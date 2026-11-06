@@ -110,3 +110,10 @@ bool py32_adc_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
                     uint32_t val);
 void py32_adc_reset(dp32g030_cpu_t *c);
 void py32_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value);
+
+/* PY32F071 DMA (py32_dma.c), STM32-style: ISR, IFCR, 7 channels. */
+bool py32_dma_read(dp32g030_cpu_t *c, uint32_t off, unsigned size,
+                   uint32_t *out);
+bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
+                    uint32_t val);
+void py32_dma_reset(dp32g030_cpu_t *c);
