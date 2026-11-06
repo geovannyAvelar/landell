@@ -123,3 +123,11 @@ void dp32g030_bk4819_pins(dp32g030_cpu_t *c, bool scn, bool scl, bool sda,
                           bool scn_scl_out, bool sda_in);
 void dp32g030_bk4819_drive_sda_dp32(dp32g030_cpu_t *c, bool level);
 void py32_bk4819_drive_sda(dp32g030_cpu_t *c, bool level);
+
+/* I2C EEPROM model (i2c_eeprom.c). `eeprom_bus` runs after every write that
+   can change the bit-banged lines; `eeprom_reset_bus` keeps the contents. */
+void dp32g030_eeprom_init(dp32g030_cpu_t *c);
+void dp32g030_eeprom_reset_bus(dp32g030_cpu_t *c);
+void dp32g030_eeprom_bus(dp32g030_cpu_t *c);
+uint32_t py32_gpio_dir(const dp32g030_cpu_t *c, unsigned port);
+uint32_t dp32g030_gpio_dir_dp32(const dp32g030_cpu_t *c, unsigned port);

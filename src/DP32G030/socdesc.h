@@ -27,6 +27,14 @@ struct dp32g030_soc {
   void (*gpio_set_input)(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                          uint32_t value);
   uint32_t (*gpio_pins)(const dp32g030_cpu_t *c, unsigned port);
+  /* Direction of a GPIO port: 1 = output. */
+  uint32_t (*gpio_dir)(const dp32g030_cpu_t *c, unsigned port);
+  /* The board's I2C EEPROM on two bit-banged pins of one GPIO port; `present`
+     false = no EEPROM model on this chip. */
+  struct {
+    bool present;
+    unsigned port, scl_pin, sda_pin;
+  } eeprom;
   /* The BK4819 answers on the data line by driving it as an input level. */
   void (*bk4819_drive_sda)(dp32g030_cpu_t *c, bool level);
   /* Analog level on ADC channel `ch` (dp32g030_adc_set_input). */

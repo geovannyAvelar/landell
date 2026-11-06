@@ -193,6 +193,7 @@ static void py32_reset(dp32g030_cpu_t *c) {
     for (unsigned j = 0; j < PY32_REGFILE_WORDS; j++)
       c->py32.regfile[i][j] = 0;
   py32_gpio_reset(c);
+  dp32g030_eeprom_reset_bus(c);
   py32_spi_reset(c);
   py32_adc_reset(c);
   py32_dma_reset(c);
@@ -216,6 +217,8 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .lcd = {.spi = 1, .a0_port = 0, .a0_pin = 6},
     .gpio_set_input = py32_gpio_set_input,
     .gpio_pins = py32_gpio_pins,
+    .gpio_dir = py32_gpio_dir,
+    .eeprom = {.present = true, .port = 3, .scl_pin = 5, .sda_pin = 6},
     .adc_set_input = py32_adc_set_input,
     .bk4819_drive_sda = py32_bk4819_drive_sda,
 };

@@ -60,6 +60,7 @@ dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
   }
 
   c->soc = soc;
+  dp32g030_eeprom_init(c);
   memset(c->flash, 0xFF, sizeof c->flash);
   memcpy(c->flash + offset, fw, size);
   dp32g030_cpu_reset(c);

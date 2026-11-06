@@ -1,5 +1,7 @@
 #include "periph.h"
 
+#include "socdesc.h"
+
 /* PY32F071 GPIO: STM32F0-style ports. Modes per pin: 0 input, 1 output,
    2 alternate function, 3 analog. IDR of an input or alternate pin follows
    the outside world (dp32g030_gpio_set_input) and falls back to the pull
@@ -63,6 +65,10 @@ void py32_gpio_reset(dp32g030_cpu_t *c) {
 
 uint32_t py32_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
   return port < PY32_NGPIO ? py32_gpio_level(&c->py32.gpio[port]) : 0;
+}
+
+uint32_t py32_gpio_dir(const dp32g030_cpu_t *c, unsigned port) {
+  return port < PY32_NGPIO ? mode_mask(c->py32.gpio[port].moder, 1) : 0;
 }
 
 void py32_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
@@ -159,5 +165,7 @@ bool py32_gpio_write(dp32g030_cpu_t *c, unsigned port, uint32_t off,
   py32_gpio_notify(c, port, before);
   if (port == BK_PORT_B || port == BK_PORT_F)
     py32_bk4819_edge(c);
+  if (c->soc->eeprom.present && port == c->soc->eeprom.port)
+    dp32g030_eeprom_bus(c);
   return true;
 }
