@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "mmio.h"
+#include "socdesc.h"
 
 static bool dp32g030_bus_valid(uint32_t addr, unsigned size) {
   if (size != 1 && size != 2 && size != 4)
@@ -12,18 +13,22 @@ static bool dp32g030_bus_valid(uint32_t addr, unsigned size) {
 
 static uint8_t *dp32g030_bus_flash(dp32g030_cpu_t *c, uint32_t addr,
                                    unsigned size) {
-  uint32_t off = addr - DP32G030_FLASH_BASE;
+  const dp32g030_soc_t *s = c->soc;
+  uint32_t off = addr - s->flash_base;
 
-  if (off > DP32G030_FLASH_SIZE - size)
-    return NULL;
-  return &c->flash[off];
+  if (off <= s->flash_size - size)
+    return &c->flash[off];
+  off = addr - s->flash_alias_base;
+  if (s->flash_alias_size && off <= s->flash_alias_size - size)
+    return &c->flash[off];
+  return NULL;
 }
 
 static uint8_t *dp32g030_bus_sram(dp32g030_cpu_t *c, uint32_t addr,
                                   unsigned size) {
-  uint32_t off = addr - DP32G030_SRAM_BASE;
+  uint32_t off = addr - c->soc->sram_base;
 
-  if (off > DP32G030_SRAM_SIZE - size)
+  if (off > c->soc->sram_size - size)
     return NULL;
   return &c->sram[off];
 }
@@ -38,7 +43,7 @@ bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
     p = dp32g030_bus_sram(c, addr, size);
 
   if (!p) {
-    const dp32g030_region_t *r = dp32g030_mmio_find(addr);
+    const dp32g030_region_t *r = c->soc->region_find(addr);
     if (!r || !r->read)
       return false;
     return r->read(c, r, addr - r->base, size, out);
@@ -58,7 +63,7 @@ bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
 
   uint8_t *p = dp32g030_bus_sram(c, addr, size);
   if (!p) {
-    const dp32g030_region_t *r = dp32g030_mmio_find(addr);
+    const dp32g030_region_t *r = c->soc->region_find(addr);
     if (!r || !r->write)
       return false;
     return r->write(c, r, addr - r->base, size, val);

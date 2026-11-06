@@ -12,6 +12,7 @@ HEADER = ROOT / "src" / "DP32G030" / "DP32G030.h"
 DEFAULT_ARCHIVE = ROOT / "build" / "src" / "DP32G030" / "libdp32g030.a"
 
 FLASH_SIZE = 64 * 1024
+FLASH_MAX = 128 * 1024  # backing store shared by every SoC
 SRAM_SIZE = 16 * 1024
 SRAM_BASE = 0x20000000
 SRAM_TOP = SRAM_BASE + SRAM_SIZE
@@ -366,7 +367,7 @@ class Cpu(ctypes.Structure):
         ("control", ctypes.c_uint32),
         ("halted", ctypes.c_bool),
         ("sleeping", ctypes.c_bool),
-        ("flash", ctypes.c_uint8 * FLASH_SIZE),
+        ("flash", ctypes.c_uint8 * FLASH_MAX),
         ("sram", ctypes.c_uint8 * SRAM_SIZE),
         ("cycles", ctypes.c_uint64),
         ("msp", ctypes.c_uint32),
@@ -376,6 +377,7 @@ class Cpu(ctypes.Structure):
         ("locked_up", ctypes.c_bool),
         ("event", ctypes.c_bool),
         ("reset_req", ctypes.c_bool),
+        ("soc", ctypes.c_void_p),
         ("scs", Scs),
         ("periph", Periph),
     ]
@@ -412,6 +414,14 @@ def load_lib(workdir):
         ctypes.c_size_t,
     ]
     lib.dp32g030_cpu_run.restype = ctypes.c_uint8
+    lib.dp32g030_soc_by_name.argtypes = [ctypes.c_char_p]
+    lib.dp32g030_soc_by_name.restype = ctypes.c_void_p
+    lib.dp32g030_cpu_new_soc.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+    ]
+    lib.dp32g030_cpu_new_soc.restype = ctypes.POINTER(Cpu)
     lib.dp32g030_cpu_free.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_cpu_free.restype = None
     lib.dp32g030_gpio_set_input.argtypes = [

@@ -8,6 +8,8 @@
 #define DP32G030_FLASH_SIZE (64 * 1024)
 #define DP32G030_SRAM_BASE 0x20000000u
 #define DP32G030_SRAM_SIZE (16 * 1024)
+/* Backing store for flash; the largest supported SoC (PY32F071) is 128 KB. */
+#define DP32G030_FLASH_MAX (128 * 1024)
 
 typedef enum {
   OP_UNDEF = 0,
@@ -359,7 +361,7 @@ typedef struct {
   uint32_t control;
   bool halted;
   bool sleeping;
-  uint8_t flash[DP32G030_FLASH_SIZE];
+  uint8_t flash[DP32G030_FLASH_MAX];
   uint8_t sram[DP32G030_SRAM_SIZE];
   /* State below is not mirrored by the Python test harness. */
   uint64_t cycles;
@@ -370,10 +372,20 @@ typedef struct {
   bool locked_up;
   bool event;         /* event register for SEV/WFE */
   bool reset_req;     /* SYSRESETREQ seen */
+  const struct dp32g030_soc *soc; /* chip this cpu models */
   dp32g030_scs_t scs;
   dp32g030_periph_t periph;
 } dp32g030_cpu_t;
 
+typedef struct dp32g030_soc dp32g030_soc_t;
+
+/* Looks a chip up by name ("dp32g030"); NULL if unknown. */
+const dp32g030_soc_t *dp32g030_soc_by_name(const char *name);
+/* Loads `fw` at the chip's image base. NULL if it is too small (< 8 bytes) or
+   does not fit in the chip's flash. */
+dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
+                                     const uint8_t *fw, size_t size);
+/* Same, with the chip chosen by dp32g030_soc_by_name's default (dp32g030). */
 dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size);
 uint8_t dp32g030_cpu_run(dp32g030_cpu_t **c, size_t size);
 void dp32g030_cpu_free(dp32g030_cpu_t *c);

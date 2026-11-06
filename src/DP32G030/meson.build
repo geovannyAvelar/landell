@@ -21,6 +21,7 @@ dp32g030_lib = static_library('dp32g030',
     'pwm_plus.c',
     'rtc_wdt.c',
     'scs.c',
+    'soc_table.c',
     'timer_plus.c',
     'timer_pwm.c',
     'timing.c'

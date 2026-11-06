@@ -6,6 +6,7 @@
 #include "exec.h"
 #include "periph.h"
 #include "soc.h"
+#include "socdesc.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -19,8 +20,10 @@ static inline uint32_t fetch32(const uint8_t *buf, size_t off) {
 
 void dp32g030_cpu_reset(dp32g030_cpu_t *c) {
   memset(c->r, 0, sizeof c->r);
-  c->r[13] = fetch32(c->flash, 0);
-  c->r[15] = fetch32(c->flash, 4) & ~1u;
+  uint32_t vt = c->soc->image_base - c->soc->flash_base;
+
+  c->r[13] = fetch32(c->flash, vt);
+  c->r[15] = fetch32(c->flash, vt + 4) & ~1u;
   c->insn_pc = c->r[15];
   c->xpsr = 1u << 24;
   c->primask = 0;
@@ -39,8 +42,13 @@ void dp32g030_cpu_reset(dp32g030_cpu_t *c) {
   dp32g030_periph_reset(c);
 }
 
-dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size) {
-  if (!fw || size < 8 || size > DP32G030_FLASH_SIZE)
+dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
+                                     const uint8_t *fw, size_t size) {
+  if (!soc || !fw || size < 8)
+    return NULL;
+
+  uint32_t offset = soc->image_base - soc->flash_base;
+  if (size > soc->flash_size - offset)
     return NULL;
 
   dp32g030_cpu_t *c = calloc(1, sizeof *c);
@@ -48,11 +56,16 @@ dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size) {
     return NULL;
   }
 
-  memset(c->flash, 0xFF, DP32G030_FLASH_SIZE);
-  memcpy(c->flash, fw, size);
+  c->soc = soc;
+  memset(c->flash, 0xFF, sizeof c->flash);
+  memcpy(c->flash + offset, fw, size);
   dp32g030_cpu_reset(c);
 
   return c;
+}
+
+dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size) {
+  return dp32g030_cpu_new_soc(&dp32g030_soc_dp32g030, fw, size);
 }
 
 /* Fetch one instruction. Returns false on a bus error. */
