@@ -102,7 +102,7 @@ static uint32_t dp32g030_portcon_pullup(const dp32g030_cpu_t *c, unsigned port) 
   return c->periph.regfile[idx][(0x200 + 4 * port) / 4];
 }
 
-uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
+uint32_t dp32g030_gpio_pins_dp32(const dp32g030_cpu_t *c, unsigned port) {
   const dp32g030_gpio_t *g = &c->periph.gpio[port];
   uint32_t level = (g->out & g->dir) | (g->in & ~g->dir);
   /* An input pin nothing has ever driven floats to its pull-up, if any
@@ -116,20 +116,20 @@ uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
 static void dp32g030_gpio_notify(dp32g030_cpu_t *c, unsigned port,
                                  uint32_t before) {
   const dp32g030_hooks_t *h = &c->periph.hooks;
-  uint32_t now = dp32g030_gpio_pins(c, port);
+  uint32_t now = dp32g030_gpio_pins_dp32(c, port);
 
   if (now != before && h->gpio_change)
     h->gpio_change(h->user, port, now, c->periph.gpio[port].dir);
 }
 
-void dp32g030_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
+void dp32g030_gpio_set_input_dp32(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                              uint32_t value) {
   dp32g030_gpio_t *g;
 
   if (port >= 3)
     return;
   g = &c->periph.gpio[port];
-  uint32_t before = dp32g030_gpio_pins(c, port);
+  uint32_t before = dp32g030_gpio_pins_dp32(c, port);
   g->in = (g->in & ~mask) | (value & mask);
   g->driven |= mask;
   dp32g030_gpio_notify(c, port, before);
@@ -144,7 +144,7 @@ bool dp32g030_gpio_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
     return dp32g030_regfile_read(c, r, off, size, out);
   if (size != 4)
     return false;
-  v = off == 0 ? dp32g030_gpio_pins(c, port) : c->periph.gpio[port].dir;
+  v = off == 0 ? dp32g030_gpio_pins_dp32(c, port) : c->periph.gpio[port].dir;
   *out = v;
   return true;
 }
@@ -158,14 +158,14 @@ bool dp32g030_gpio_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
     return dp32g030_regfile_write(c, r, off, size, val);
   if (size != 4)
     return false;
-  uint32_t before = dp32g030_gpio_pins(c, port);
+  uint32_t before = dp32g030_gpio_pins_dp32(c, port);
   if (off == 0)
     g->out = val;
   else
     g->dir = val;
   dp32g030_gpio_notify(c, port, before);
   if (port == 2)
-    dp32g030_bk4819_gpio_edge(c, before, dp32g030_gpio_pins(c, port), g->dir);
+    dp32g030_bk4819_gpio_edge(c, before, dp32g030_gpio_pins_dp32(c, port), g->dir);
   return true;
 }
 

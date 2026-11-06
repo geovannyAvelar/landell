@@ -357,9 +357,18 @@ typedef struct {
 #define PY32_REGION_SIZE 0x400u
 #define PY32_REGFILE_WORDS (PY32_REGION_SIZE / 4)
 
+#define PY32_NGPIO 4 /* ports A, B, C, F */
+
+typedef struct {
+  uint32_t moder, otyper, ospeedr, pupdr, odr, lckr, afr[2];
+  uint32_t in;     /* levels driven from outside on non-output pins */
+  uint32_t driven; /* 1 = dp32g030_gpio_set_input has driven this pin */
+} dp32g030_py32_gpio_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
+  dp32g030_py32_gpio_t gpio[PY32_NGPIO];
 } dp32g030_py32_t;
 
 typedef struct {

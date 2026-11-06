@@ -1,5 +1,7 @@
 #include "socdesc.h"
 
+#include "periph.h"
+
 #include <string.h>
 
 const dp32g030_soc_t dp32g030_soc_dp32g030 = {
@@ -11,6 +13,8 @@ const dp32g030_soc_t dp32g030_soc_dp32g030 = {
     .image_base = DP32G030_FLASH_BASE,
     .has_vtor = false,
     .region_find = dp32g030_mmio_find,
+    .gpio_set_input = dp32g030_gpio_set_input_dp32,
+    .gpio_pins = dp32g030_gpio_pins_dp32,
 };
 
 static const dp32g030_soc_t *const dp32g030_socs[] = {
@@ -23,4 +27,13 @@ const dp32g030_soc_t *dp32g030_soc_by_name(const char *name) {
     if (!strcmp(dp32g030_socs[i]->name, name))
       return dp32g030_socs[i];
   return NULL;
+}
+
+void dp32g030_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
+                             uint32_t value) {
+  c->soc->gpio_set_input(c, port, mask, value);
+}
+
+uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
+  return c->soc->gpio_pins(c, port);
 }

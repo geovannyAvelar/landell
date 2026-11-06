@@ -17,6 +17,10 @@ struct dp32g030_soc {
   const dp32g030_region_t *(*region_find)(uint32_t addr);
   /* Chip-specific power-on state, run at the end of dp32g030_cpu_reset. */
   void (*reset)(dp32g030_cpu_t *c);
+  /* GPIO behind dp32g030_gpio_set_input / dp32g030_gpio_pins. */
+  void (*gpio_set_input)(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
+                         uint32_t value);
+  uint32_t (*gpio_pins)(const dp32g030_cpu_t *c, unsigned port);
 };
 
 extern const dp32g030_soc_t dp32g030_soc_dp32g030;

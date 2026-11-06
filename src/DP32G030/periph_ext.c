@@ -108,7 +108,7 @@ bool dp32g030_spi_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
       uint8_t rx = h->spi_xfer ? h->spi_xfer(h->user, n, (uint8_t)val) : 0;
 
       if (n == 0) {
-        bool a0 = (dp32g030_gpio_pins(c, 1) & (1u << 9)) != 0;
+        bool a0 = (dp32g030_gpio_pins_dp32(c, 1) & (1u << 9)) != 0;
 
         dp32g030_lcd_spi_byte(c, (uint8_t)val, a0);
       }

@@ -77,3 +77,18 @@ void dp32g030_prescaled_run(dp32g030_cpu_t *c, uint32_t div, uint32_t *presc,
                             uint64_t cycles, unsigned n,
                             void (*tick_one)(dp32g030_cpu_t *, unsigned));
 uint64_t dp32g030_presc_event(uint32_t presc, uint32_t div, uint64_t ticks);
+
+/* DP32G030 GPIO implementations behind the soc-aware public API. */
+void dp32g030_gpio_set_input_dp32(dp32g030_cpu_t *c, unsigned port,
+                                  uint32_t mask, uint32_t value);
+uint32_t dp32g030_gpio_pins_dp32(const dp32g030_cpu_t *c, unsigned port);
+
+/* PY32F071 GPIO (py32_gpio.c). Port index: 0=A, 1=B, 2=C, 3=F. */
+void py32_gpio_reset(dp32g030_cpu_t *c);
+void py32_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
+                         uint32_t value);
+uint32_t py32_gpio_pins(const dp32g030_cpu_t *c, unsigned port);
+bool py32_gpio_read(dp32g030_cpu_t *c, unsigned port, uint32_t off,
+                    unsigned size, uint32_t *out);
+bool py32_gpio_write(dp32g030_cpu_t *c, unsigned port, uint32_t off,
+                     unsigned size, uint32_t val);

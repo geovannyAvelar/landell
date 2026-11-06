@@ -37,8 +37,30 @@ static bool py32_regfile_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   return true;
 }
 
+static bool py32_gpio_region_read(dp32g030_cpu_t *c,
+                                  const dp32g030_region_t *r, uint32_t off,
+                                  unsigned size, uint32_t *out) {
+  unsigned port = r->base == 0x50001400u ? 3u : (r->base - 0x50000000u) / 0x400u;
+
+  if (off < 0x2C)
+    return py32_gpio_read(c, port, off, size, out);
+  return py32_regfile_read(c, r, off, size, out);
+}
+
+static bool py32_gpio_region_write(dp32g030_cpu_t *c,
+                                   const dp32g030_region_t *r, uint32_t off,
+                                   unsigned size, uint32_t val) {
+  unsigned port = r->base == 0x50001400u ? 3u : (r->base - 0x50000000u) / 0x400u;
+
+  if (off < 0x2C)
+    return py32_gpio_write(c, port, off, size, val);
+  return py32_regfile_write(c, r, off, size, val);
+}
+
 #define PY32_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_regfile_read, py32_regfile_write}
+#define PY32_GPIO_REGION(n, b) \
+  {#n, (b), PY32_REGION_SIZE, -1, -1, py32_gpio_region_read, py32_gpio_region_write}
 
 static const dp32g030_region_t py32f071_regions[] = {
     PY32_REGION(TIM2, 0x40000000u, 15),
@@ -77,10 +99,10 @@ static const dp32g030_region_t py32f071_regions[] = {
     PY32_REGION(FLASH_R, 0x40022000u, 3),
     PY32_REGION(CRC, 0x40023000u, -1),
     PY32_REGION(DIV, 0x40023800u, -1),
-    PY32_REGION(GPIOA, 0x50000000u, -1),
-    PY32_REGION(GPIOB, 0x50000400u, -1),
-    PY32_REGION(GPIOC, 0x50000800u, -1),
-    PY32_REGION(GPIOF, 0x50001400u, -1),
+    PY32_GPIO_REGION(GPIOA, 0x50000000u),
+    PY32_GPIO_REGION(GPIOB, 0x50000400u),
+    PY32_GPIO_REGION(GPIOC, 0x50000800u),
+    PY32_GPIO_REGION(GPIOF, 0x50001400u),
 };
 
 _Static_assert(sizeof py32f071_regions / sizeof *py32f071_regions ==
@@ -118,6 +140,7 @@ static void py32_reset(dp32g030_cpu_t *c) {
   for (unsigned i = 0; i < PY32_NREGIONS; i++)
     for (unsigned j = 0; j < PY32_REGFILE_WORDS; j++)
       c->py32.regfile[i][j] = 0;
+  py32_gpio_reset(c);
   if (idx >= 0)
     c->py32.regfile[idx][0] =
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
@@ -135,4 +158,6 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .has_vtor = true,
     .region_find = py32_region_find,
     .reset = py32_reset,
+    .gpio_set_input = py32_gpio_set_input,
+    .gpio_pins = py32_gpio_pins,
 };

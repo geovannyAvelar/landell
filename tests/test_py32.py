@@ -152,3 +152,102 @@ def test_py32_rcc_boot_state(lib, py32):
     cr = rd(lib, cpu, 0x40021000)[1]
     assert cr & (1 << 10)  # HSIRDY
     assert cr & (1 << 25)  # PLLRDY: the bootloader left the PLL running
+
+
+# ---- GPIO ---------------------------------------------------------------
+
+GPIOA = 0x50000000
+GPIOF = 0x50001400
+MODER, OTYPER, PUPDR, IDR, ODR, BSRR, BRR = 0x00, 0x04, 0x0C, 0x10, 0x14, 0x18, 0x28
+PORT_A, PORT_F = 0, 3  # port index used by gpio_set_input/gpio_pins
+
+
+def mode(pin, m):
+    return m << (2 * pin)
+
+
+@pytest.fixture
+def pins(lib, py32):
+    cpu = py32(app_image())
+
+    class Env:
+        pass
+
+    e = Env()
+    e.cpu = cpu
+    e.pins = lambda port=PORT_A: lib.dp32g030_gpio_pins(cpu, port)
+    e.reg = lambda off, base=GPIOA: rd(lib, cpu, base + off)[1]
+    e.put = lambda off, val, base=GPIOA: wr(lib, cpu, base + off, val)
+    return e
+
+
+def test_py32_gpio_odr_bsrr(pins):
+    pins.put(MODER, mode(3, 1))  # PA3 output
+    pins.put(BSRR, 1 << 3)
+    assert pins.reg(ODR) & (1 << 3)
+    assert pins.reg(IDR) & (1 << 3)
+    assert pins.pins() & (1 << 3)
+    pins.put(BSRR, 1 << 19)
+    assert not pins.reg(ODR) & (1 << 3)
+    assert not pins.reg(IDR) & (1 << 3)
+
+
+def test_py32_bsrr_reset_wins(pins):
+    pins.put(MODER, mode(3, 1))
+    pins.put(BSRR, (1 << 3) | (1 << 19))
+    assert not pins.reg(ODR) & (1 << 3)
+
+
+def test_py32_brr(pins):
+    pins.put(MODER, mode(2, 1))
+    pins.put(BSRR, 1 << 2)
+    pins.put(BRR, 1 << 2)
+    assert not pins.reg(ODR) & (1 << 2)
+
+
+def test_py32_gpio_input_pulls_and_host_drive(lib, pins):
+    pins.put(MODER, 0)  # all inputs
+    assert not pins.reg(IDR) & (1 << 5)  # floating reads 0
+    pins.put(PUPDR, mode(5, 1))  # pull-up
+    assert pins.reg(IDR) & (1 << 5)
+    pins.put(PUPDR, mode(5, 2))  # pull-down
+    assert not pins.reg(IDR) & (1 << 5)
+    lib.dp32g030_gpio_set_input(pins.cpu, PORT_A, 1 << 5, 1 << 5)
+    assert pins.reg(IDR) & (1 << 5)  # the outside world wins over the pull
+    lib.dp32g030_gpio_set_input(pins.cpu, PORT_A, 1 << 5, 0)
+    assert not pins.reg(IDR) & (1 << 5)
+
+
+def test_py32_gpio_open_drain_reads_high_when_released(pins):
+    pins.put(MODER, mode(4, 1))
+    pins.put(OTYPER, 1 << 4)
+    pins.put(BSRR, 1 << 4)  # released: external pull-up
+    assert pins.reg(IDR) & (1 << 4)
+    pins.put(BSRR, 1 << 20)  # driven low
+    assert not pins.reg(IDR) & (1 << 4)
+
+
+def test_py32_gpio_analog_reads_zero(lib, pins):
+    # reset state: pins are analog; digital input is disconnected
+    lib.dp32g030_gpio_set_input(pins.cpu, PORT_A, 1 << 6, 1 << 6)
+    assert not pins.reg(IDR) & (1 << 6)
+
+
+def test_py32_gpio_change_hook(lib, pins):
+    seen = []
+    pins.cpu.contents.periph.hooks.gpio_change = emu.GPIO_CB(
+        lambda user, port, p, d: seen.append((port, p, d))
+    )
+    pins.put(MODER, mode(3, 1))
+    pins.put(BSRR, 1 << 3)
+    port, level, direction = seen[-1]
+    assert port == PORT_A
+    assert level & (1 << 3)
+    assert direction & (1 << 3)
+
+
+def test_py32_gpio_port_f(pins):
+    pins.put(MODER, mode(8, 1), GPIOF)
+    pins.put(BSRR, 1 << 8, GPIOF)
+    assert pins.pins(PORT_F) & (1 << 8)
+    assert not pins.pins(PORT_A) & (1 << 8)

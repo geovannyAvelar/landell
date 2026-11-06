@@ -288,7 +288,7 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
               REG_02_DTMF_5TONE_FOUND | REG_02_VOX_FOUND | REG_02_VOX_LOST |
               REG_02_FSK_RX_FINISHED);
         b->bitpos = 0;
-        dp32g030_gpio_set_input(c, 2, BK4819_PIN_SDA,
+        dp32g030_gpio_set_input_dp32(c, 2, BK4819_PIN_SDA,
                                 (b->shift & 0x8000u) ? BK4819_PIN_SDA : 0);
       } else if (sda_in && b->prev_scl && !scl && b->bitpos < 15) {
         /* Falling clock edge: the host just sampled; queue the next bit. */
@@ -296,7 +296,7 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
 
         b->bitpos++;
         bit = (b->shift >> (15 - b->bitpos)) & 1u;
-        dp32g030_gpio_set_input(c, 2, BK4819_PIN_SDA, bit ? BK4819_PIN_SDA : 0);
+        dp32g030_gpio_set_input_dp32(c, 2, BK4819_PIN_SDA, bit ? BK4819_PIN_SDA : 0);
       }
     }
   }
