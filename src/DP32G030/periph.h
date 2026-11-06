@@ -153,3 +153,7 @@ void py32_dma_request(dp32g030_cpu_t *c, unsigned req);
 /* Word `off` of the register file of the region at `base` (the block holds no
    behavior of its own, e.g. SYSCFG). */
 uint32_t py32_regfile_word(const dp32g030_cpu_t *c, uint32_t base, uint32_t off);
+
+/* Backlight pin tracking (backlight.c). */
+void dp32g030_backlight_pin(dp32g030_cpu_t *c, bool level);
+void dp32g030_backlight_reset(dp32g030_cpu_t *c);

@@ -436,6 +436,10 @@ def load_lib(workdir):
     lib.dp32g030_soc_tick.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint64]
     lib.dp32g030_soc_next_event.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_soc_next_event.restype = ctypes.c_uint64
+    lib.dp32g030_has_backlight.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_has_backlight.restype = ctypes.c_bool
+    lib.dp32g030_backlight_level.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_backlight_level.restype = ctypes.c_uint8
     lib.dp32g030_cpu_free.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_cpu_free.restype = None
     lib.dp32g030_gpio_set_input.argtypes = [

@@ -412,6 +412,16 @@ typedef struct {
   uint32_t presc_cnt;  /* core clocks into the current prescaler count */
 } dp32g030_py32_tim_t;
 
+/* Average level of the board's backlight pin over fixed windows (backlight.c). */
+typedef struct {
+  uint64_t last_cycle; /* time accounted up to */
+  uint64_t win_start;  /* start of the current measurement window */
+  uint64_t high_acc;   /* core clocks the pin was high in this window */
+  bool level;          /* current pin level */
+  bool have;           /* a window has closed */
+  uint8_t duty;        /* duty of the last closed window, 0-255 */
+} dp32g030_backlight_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
@@ -450,9 +460,15 @@ typedef struct {
   bool bus_fault_write;    /* ... and whether it was a write */
   dp32g030_py32_t py32;
   dp32g030_extflash_t extflash;
+  dp32g030_backlight_t backlight;
 } dp32g030_cpu_t;
 
 typedef struct dp32g030_soc dp32g030_soc_t;
+
+/* The board's backlight: whether this chip's board has one modeled, and its
+   level (0-255, the pin's duty over the last ~17 ms of emulated time). */
+bool dp32g030_has_backlight(const dp32g030_cpu_t *c);
+uint8_t dp32g030_backlight_level(dp32g030_cpu_t *c);
 
 /* Host access to the board's external flash contents (clamped to its size). */
 void dp32g030_extflash_set(dp32g030_cpu_t *c, uint32_t offset,

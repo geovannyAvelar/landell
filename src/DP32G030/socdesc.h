@@ -40,6 +40,12 @@ struct dp32g030_soc {
   uint32_t (*gpio_pins)(const dp32g030_cpu_t *c, unsigned port);
   /* Direction of a GPIO port: 1 = output. */
   uint32_t (*gpio_dir)(const dp32g030_cpu_t *c, unsigned port);
+  /* The board's backlight pin (GPIO port index and pin); `present` false = not
+     modeled on this chip. */
+  struct {
+    bool present;
+    unsigned port, pin;
+  } backlight;
   /* The board's external SPI NOR flash on SPI number `spi` (as the hooks
      number them); GPIO port `cs_port` pin `cs_pin` is its active-low chip
      select. `present` false = no flash model on this chip. */

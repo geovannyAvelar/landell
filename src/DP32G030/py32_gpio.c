@@ -50,8 +50,12 @@ static void py32_gpio_notify(dp32g030_cpu_t *c, unsigned port,
   const dp32g030_py32_gpio_t *g = &c->py32.gpio[port];
   uint32_t now = py32_gpio_level(g);
 
-  if (now != before && h->gpio_change)
+  if (now == before)
+    return;
+  if (h->gpio_change)
     h->gpio_change(h->user, port, now, mode_mask(g->moder, 1));
+  if (c->soc->backlight.present && port == c->soc->backlight.port)
+    dp32g030_backlight_pin(c, ((now >> c->soc->backlight.pin) & 1u) != 0);
 }
 
 void py32_gpio_reset(dp32g030_cpu_t *c) {

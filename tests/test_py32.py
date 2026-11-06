@@ -1078,3 +1078,104 @@ def test_py32_dma_spi_mapped_channels_still_run_at_once(lib, py32):
     wr(lib, cpu, src, 0x11223344)
     dma_setup(lib, cpu, 1, CCR_EN | CCR_MEM2MEM | CCR_PINC | CCR_MINC, 4, src, dst)
     assert rd(lib, cpu, dst) == (True, 0x11223344)
+
+
+# ---- backlight (PF8 duty over time) --------------------------------------
+
+GPIOF_BASE = 0x50001400
+BL_PIN = 1 << 8
+WINDOW = 800_000  # core clocks per measurement window
+
+
+def backlight_pin_output(lib, cpu):
+    wr(lib, cpu, GPIOF_BASE + MODER, mode(8, 1))
+
+
+def bl_set(lib, cpu, high):
+    wr(lib, cpu, GPIOF_BASE + BSRR, BL_PIN if high else BL_PIN << 16)
+
+
+def test_backlight_present_only_where_the_board_has_one(lib, py32):
+    cpu = py32(app_image())
+    assert lib.dp32g030_has_backlight(cpu)
+    soc = lib.dp32g030_soc_by_name(b"dp32g030")
+    data = emu.firmware([BKPT])
+    dp = lib.dp32g030_cpu_new_soc(soc, emu.to_buf(data), len(data))
+    try:
+        assert not lib.dp32g030_has_backlight(dp)
+    finally:
+        lib.dp32g030_cpu_free(dp)
+
+
+def test_backlight_duty_follows_the_time_the_pin_is_high(lib, py32):
+    cpu = py32(app_image())
+    backlight_pin_output(lib, cpu)
+    bl_set(lib, cpu, True)  # high at cycle 0
+    cpu.contents.cycles = 200_000
+    bl_set(lib, cpu, False)
+    cpu.contents.cycles = WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 64  # 200k / 800k of 256
+
+
+def test_backlight_always_high_and_always_low(lib, py32):
+    cpu = py32(app_image())
+    backlight_pin_output(lib, cpu)
+    cpu.contents.cycles = 3 * WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 0  # never driven
+    bl_set(lib, cpu, True)
+    cpu.contents.cycles = 5 * WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 255  # full duty caps at 255
+    bl_set(lib, cpu, False)
+    cpu.contents.cycles = 7 * WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 0
+
+
+def test_backlight_estimate_before_the_first_window_closes(lib, py32):
+    cpu = py32(app_image())
+    backlight_pin_output(lib, cpu)
+    bl_set(lib, cpu, True)
+    cpu.contents.cycles = 100_000
+    assert lib.dp32g030_backlight_level(cpu) == 255  # high so far
+
+
+def test_backlight_edge_straddling_windows(lib, py32):
+    cpu = py32(app_image())
+    backlight_pin_output(lib, cpu)
+    cpu.contents.cycles = WINDOW - 100_000
+    bl_set(lib, cpu, True)  # high for the last 100k of window 1 ...
+    cpu.contents.cycles = WINDOW + 300_000
+    bl_set(lib, cpu, False)  # ... and the first 300k of window 2
+    cpu.contents.cycles = 2 * WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 96  # 300k / 800k of 256 (window 2)
+
+
+def test_backlight_ignores_other_pins_and_ports(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, GPIOF_BASE + MODER, mode(7, 1) | mode(9, 1))
+    wr(lib, cpu, GPIOF_BASE + BSRR, (1 << 7) | (1 << 9))
+    wr(lib, cpu, GPIOA + MODER, mode(8, 1))
+    wr(lib, cpu, GPIOA + BSRR, 1 << 8)  # PA8 is not the backlight
+    cpu.contents.cycles = 2 * WINDOW
+    assert lib.dp32g030_backlight_level(cpu) == 0
+
+
+def test_backlight_pwm_through_timer_and_dma_like_the_firmware(lib, py32):
+    cpu = py32(app_image())
+    backlight_pin_output(lib, cpu)
+    levels, high = 32, 8  # 8/32 duty
+    buf = SRAM_BASE + 0x100
+    for i in range(levels):
+        wr(lib, cpu, buf + 4 * i, BL_PIN if i < high else BL_PIN << 16)
+    map_dma_channel(lib, cpu, 7, TIM7_UP)
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_DIR | CCR_CIRC | CCR_MINC | SIZE32, levels,
+              GPIOF_BASE + BSRR, buf)
+    wr(lib, cpu, TIM7 + TIM_ARR, 374)  # 48 MHz / 4 kHz / 32 levels - 1
+    wr(lib, cpu, TIM7 + TIM_DIER, DIER_UDE)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 3 * WINDOW, chunk=375)
+    assert abs(lib.dp32g030_backlight_level(cpu) - 64) <= 6
+    # the firmware dims it: 24/32 duty
+    for i in range(levels):
+        wr(lib, cpu, buf + 4 * i, BL_PIN if i < 24 else BL_PIN << 16)
+    advance(lib, cpu, 3 * WINDOW, chunk=375)
+    assert abs(lib.dp32g030_backlight_level(cpu) - 192) <= 6
