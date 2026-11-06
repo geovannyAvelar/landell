@@ -196,16 +196,41 @@ def test_contrast_is_a_two_byte_command(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
-def test_software_reset_clears_state(lib):
+def test_software_reset_keeps_display_state_and_ram(lib):
     ptr = new_cpu(lib)
     try:
         link = Link(ptr, lib)
         link.cmd(0xAF)
+        link.cmd(0xA1)  # SEG reverse
+        link.cmd(0xA7)  # inverse
         link.set_page_col(2, 5)
         link.data(0xFF)
         link.cmd(0xE2)  # software reset
-        assert not lib.dp32g030_lcd_is_on(ptr)
-        assert lib.dp32g030_lcd_ram(ptr, 2, 5) == 0
+        lcd = ptr.contents.periph.lcd
+        assert lib.dp32g030_lcd_is_on(ptr)  # display on/off is not reset
+        assert lcd.seg_reverse and lcd.inverse
+        assert lib.dp32g030_lcd_ram(ptr, 2, 5) == 0xFF  # RAM survives
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_software_reset_clears_addressing(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.cmd(0xAF)
+        link.cmd(0xC8)  # COM reverse
+        link.cmd(0x40 | 8)  # start line 8
+        link.cmd(0x81)
+        link.cmd(0x20)  # contrast 0x20
+        link.set_page_col(3, 7)
+        link.cmd(0xE2)  # software reset
+        lcd = ptr.contents.periph.lcd
+        assert (lcd.page, lcd.col, lcd.start_line) == (0, 0, 0)
+        assert not lcd.com_reverse
+        assert lcd.contrast == 0
+        link.data(0x01)  # lands at page 0, column 0
+        assert lib.dp32g030_lcd_ram(ptr, 0, 0) == 0x01
     finally:
         lib.dp32g030_cpu_free(ptr)
 

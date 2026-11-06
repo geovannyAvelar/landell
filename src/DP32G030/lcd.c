@@ -23,10 +23,16 @@ static void lcd_command(dp32g030_cpu_t *c, uint8_t b) {
     l->pending_contrast = false;
     return;
   }
-  if (b == 0xE2) { /* software reset */
-    dp32g030_lcd_t cleared = {0};
-
-    *l = cleared;
+  if (b == 0xE2) { /* software reset: address counters, start line, COM
+                      direction and the contrast level only. Display on/off,
+                      SEG direction, inverse, all-on and the RAM survive; only
+                      the RESET pin clears those. */
+    l->page = 0;
+    l->col = 0;
+    l->start_line = 0;
+    l->com_reverse = false;
+    l->contrast = 0;
+    l->pending_contrast = false;
     return;
   }
   if (b == 0x81) { /* SET_EV: next byte is the contrast level */
