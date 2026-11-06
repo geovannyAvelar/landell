@@ -30,11 +30,11 @@ struct Frame {
   sk_sp<SkSurface> surface;
   SkBitmap bitmap;
 
-  Frame(const dp32g030_cpu_t *cpu, int s) : scale(s) {
+  Frame(const dp32g030_cpu_t *cpu, int s, float backlight = 1.0f) : scale(s) {
     SkImageInfo info = SkImageInfo::MakeN32Premul(128 * s, 64 * s);
     bitmap.allocPixels(info);
     surface = SkSurfaces::WrapPixels(info, bitmap.getPixels(), bitmap.rowBytes());
-    lcd_view_draw(cpu, surface->getCanvas(), s);
+    lcd_view_draw(cpu, surface->getCanvas(), s, backlight);
   }
   // Color at the centre of LCD pixel (x, y).
   SkColor center(int x, int y) const {
@@ -86,6 +86,28 @@ int main() {
         if (x != 0 || y != 0)
           CHECK(f.center(x, y) == pal.pixel_off);
     cpu->periph.lcd.ram[0][0] = 0x00;
+  }
+  { // backlight_dims_the_glass: full backlight is the normal palette
+    LcdPalette lit = lcd_palette(1.0f), dark = lcd_palette(0.0f), mid = lcd_palette(0.5f);
+    CHECK(lit.background == pal.background);
+    auto lum = [](SkColor c) { return SkColorGetR(c) + SkColorGetG(c) + SkColorGetB(c); };
+    CHECK(lum(dark.background) < lum(lit.background));
+    CHECK(lum(dark.pixel_off) < lum(lit.pixel_off));
+    CHECK(lum(mid.background) > lum(dark.background));
+    CHECK(lum(mid.background) < lum(lit.background));
+    // the glass stays readable without light: pixels still contrast with the field
+    CHECK(lum(dark.background) - lum(dark.pixel_on) > 150);
+    CHECK(dark.off == lit.off); // a switched-off display is not affected
+
+    Frame f(cpu, 6, 0.0f);
+    CHECK(f.center(0, 0) == dark.pixel_on);
+    CHECK(f.center(1, 0) == dark.pixel_off);
+    CHECK(f.at(5, 0) == dark.background);
+  }
+  { // brightness_out_of_range_is_clamped
+    LcdPalette lo = lcd_palette(-3.0f), hi = lcd_palette(7.0f);
+    CHECK(lo.background == lcd_palette(0.0f).background);
+    CHECK(hi.background == lcd_palette(1.0f).background);
   }
   { // display_off_is_flat
     cpu->periph.lcd.display_on = false;

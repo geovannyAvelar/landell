@@ -58,8 +58,14 @@ struct Options {
 // Shared with the core through hooks.user.
 struct Ui {
   bool dirty = true; // LCD or panel needs redrawing
+  int backlight = -1; // level (0-255) of the last drawn frame
   Keypad *keypad = nullptr;
 };
+
+// Backlight level 0-255; boards without a modeled backlight stay lit.
+int backlight_level(dp32g030_cpu_t *cpu) {
+  return dp32g030_has_backlight(cpu) ? dp32g030_backlight_level(cpu) : 255;
+}
 
 void lcd_updated(void *user) { static_cast<Ui *>(user)->dirty = true; }
 
@@ -230,7 +236,8 @@ int run_screenshot(dp32g030_cpu_t **cpup, const Options &o, const Keypad &keypad
   uint8_t status = dp32g030_cpu_run(cpup, o.steps);
   dp32g030_cpu_t *cpu = *cpup;
   Canvas canvas(o.scale);
-  lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale);
+  lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale,
+                float(backlight_level(cpu)) / 255.0f);
   panel_draw(canvas.surface->getCanvas(), o.scale, keypad);
 
   SkPixmap pixmap;
@@ -450,9 +457,14 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
       }
     }
 
+    int level = backlight_level(cpu);
+    if (ui->backlight < 0 || std::abs(level - ui->backlight) >= 3)
+      ui->dirty = true; // the backlight moved enough to see
     if (ui->dirty) {
       ui->dirty = false;
-      lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale);
+      ui->backlight = level;
+      lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale,
+                    float(level) / 255.0f);
       panel_draw(canvas.surface->getCanvas(), o.scale, *pad);
       SDL_UpdateTexture(texture, nullptr, canvas.bitmap.getPixels(),
                         int(canvas.bitmap.rowBytes()));
