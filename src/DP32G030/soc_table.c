@@ -17,6 +17,7 @@ const dp32g030_soc_t dp32g030_soc_dp32g030 = {
     .gpio_set_input = dp32g030_gpio_set_input_dp32,
     .gpio_pins = dp32g030_gpio_pins_dp32,
     .adc_set_input = dp32g030_adc_set_input_dp32,
+    .bk4819_drive_sda = dp32g030_bk4819_drive_sda_dp32,
 };
 
 static const dp32g030_soc_t *const dp32g030_socs[] = {

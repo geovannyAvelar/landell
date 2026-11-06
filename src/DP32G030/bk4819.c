@@ -1,4 +1,5 @@
 #include "periph.h"
+#include "socdesc.h"
 
 /* BK4819: bit-banged over GPIOC, not a DP32G030 MMIO peripheral. See
    dp32g030_bk4819_gpio_edge (hooked from dp32g030_gpio_write) and the
@@ -226,26 +227,23 @@ static void bk4819_fsk_fifo_pop(dp32g030_bk4819_t *b) {
   bk4819_fsk_fifo_status(b);
 }
 
-/* Called after every GPIOC DATA/DIR write, with the port's effective
-   pin levels (dp32g030_gpio_pins) and direction before and after. */
-void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
-                               uint32_t after, uint32_t dir) {
+/* Protocol decoder for the bit-banged chip-select/clock/data link. Called
+   after every write that can change the three lines, with their effective
+   levels: `scn_scl_out` says both CS and clock are driven as outputs (the
+   firmware has configured the link), `sda_in` says the data line is currently
+   an input (the host is reading). The chip answers by driving SDA through the
+   SoC (soc->bk4819_drive_sda). */
+void dp32g030_bk4819_pins(dp32g030_cpu_t *c, bool scn, bool scl, bool sda,
+                          bool scn_scl_out, bool sda_in) {
   dp32g030_bk4819_t *b = &c->periph.bk4819;
-  bool scn, scl, sda_in;
 
-  (void)before;
-  if ((dir & (BK4819_PIN_SCN | BK4819_PIN_SCL)) !=
-      (BK4819_PIN_SCN | BK4819_PIN_SCL)) {
+  if (!scn_scl_out) {
     /* SCN/SCL not driven as outputs: not wired up (yet), or firmware
        hasn't configured the pins. Nothing to decode. */
     bk4819_reset_transaction(b);
     b->prev_scn = b->prev_scl = b->prev_sda_in = false;
     return;
   }
-
-  scn = (after & BK4819_PIN_SCN) != 0;
-  scl = (after & BK4819_PIN_SCL) != 0;
-  sda_in = !(dir & BK4819_PIN_SDA); /* SDA currently an input (host reading) */
 
   if (b->prev_scn && !scn) {
     /* Falling edge on chip select: transaction starts. */
@@ -259,9 +257,7 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
     if (!b->prev_scl && scl && !sda_in) {
       /* Rising clock edge while the host drives SDA: sample the bit
          (address/command byte, or a 16-bit write). */
-      bool bit = (after & BK4819_PIN_SDA) != 0;
-
-      b->shift = (uint16_t)((b->shift << 1) | (bit ? 1u : 0u));
+      b->shift = (uint16_t)((b->shift << 1) | (sda ? 1u : 0u));
       b->bitpos++;
       if (b->addr_phase && b->bitpos == 8) {
         b->addr = (uint8_t)(b->shift & 0x7Fu);
@@ -288,21 +284,35 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
               REG_02_DTMF_5TONE_FOUND | REG_02_VOX_FOUND | REG_02_VOX_LOST |
               REG_02_FSK_RX_FINISHED);
         b->bitpos = 0;
-        dp32g030_gpio_set_input_dp32(c, 2, BK4819_PIN_SDA,
-                                (b->shift & 0x8000u) ? BK4819_PIN_SDA : 0);
+        c->soc->bk4819_drive_sda(c, (b->shift & 0x8000u) != 0);
       } else if (sda_in && b->prev_scl && !scl && b->bitpos < 15) {
         /* Falling clock edge: the host just sampled; queue the next bit. */
-        uint32_t bit;
-
         b->bitpos++;
-        bit = (b->shift >> (15 - b->bitpos)) & 1u;
-        dp32g030_gpio_set_input_dp32(c, 2, BK4819_PIN_SDA, bit ? BK4819_PIN_SDA : 0);
+        c->soc->bk4819_drive_sda(c, ((b->shift >> (15 - b->bitpos)) & 1u) != 0);
       }
     }
   }
   b->prev_scn = scn;
   b->prev_scl = scl;
   b->prev_sda_in = sda_in;
+}
+
+/* DP32G030: CS, clock and data are GPIOC pins 0-2. Called after every GPIOC
+   DATA/DIR write with the port's effective levels and direction. */
+void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
+                               uint32_t after, uint32_t dir) {
+  (void)before;
+  dp32g030_bk4819_pins(
+      c, (after & BK4819_PIN_SCN) != 0, (after & BK4819_PIN_SCL) != 0,
+      (after & BK4819_PIN_SDA) != 0,
+      (dir & (BK4819_PIN_SCN | BK4819_PIN_SCL)) ==
+          (BK4819_PIN_SCN | BK4819_PIN_SCL),
+      !(dir & BK4819_PIN_SDA));
+}
+
+void dp32g030_bk4819_drive_sda_dp32(dp32g030_cpu_t *c, bool level) {
+  dp32g030_gpio_set_input_dp32(c, 2, BK4819_PIN_SDA,
+                               level ? BK4819_PIN_SDA : 0);
 }
 
 void dp32g030_bk4819_set_signal(dp32g030_cpu_t *c, uint16_t rssi,

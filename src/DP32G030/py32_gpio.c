@@ -102,6 +102,31 @@ bool py32_gpio_read(dp32g030_cpu_t *c, unsigned port, uint32_t off,
   return true;
 }
 
+/* The UV-K5 V3 / K1 wires the BK4819 serial link to CSN = PF9, SCL = PB8,
+   SDA = PB9. */
+#define BK_PORT_B 1u
+#define BK_PORT_F 3u
+#define BK_SCL (1u << 8)
+#define BK_SDA (1u << 9)
+#define BK_CSN (1u << 9)
+
+void py32_bk4819_drive_sda(dp32g030_cpu_t *c, bool level) {
+  py32_gpio_set_input(c, BK_PORT_B, BK_SDA, level ? BK_SDA : 0);
+}
+
+static void py32_bk4819_edge(dp32g030_cpu_t *c) {
+  const dp32g030_py32_gpio_t *b = &c->py32.gpio[BK_PORT_B];
+  const dp32g030_py32_gpio_t *f = &c->py32.gpio[BK_PORT_F];
+  uint32_t b_level = py32_gpio_level(b);
+  uint32_t out_b = mode_mask(b->moder, 1);
+  uint32_t out_f = mode_mask(f->moder, 1);
+
+  dp32g030_bk4819_pins(c, (py32_gpio_level(f) & BK_CSN) != 0,
+                       (b_level & BK_SCL) != 0, (b_level & BK_SDA) != 0,
+                       (out_f & BK_CSN) && (out_b & BK_SCL),
+                       !(out_b & BK_SDA));
+}
+
 bool py32_gpio_write(dp32g030_cpu_t *c, unsigned port, uint32_t off,
                      unsigned size, uint32_t val) {
   dp32g030_py32_gpio_t *g = &c->py32.gpio[port];
@@ -132,5 +157,7 @@ bool py32_gpio_write(dp32g030_cpu_t *c, unsigned port, uint32_t off,
   if (reg)
     *reg = (*reg & ~(mask << shift)) | ((val & mask) << shift);
   py32_gpio_notify(c, port, before);
+  if (port == BK_PORT_B || port == BK_PORT_F)
+    py32_bk4819_edge(c);
   return true;
 }

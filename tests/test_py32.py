@@ -481,3 +481,88 @@ def test_py32_dma_spi_full_duplex(lib, py32):
     assert [rd(lib, cpu, rxbuf + i, 1)[1] for i in range(3)] == [0x11, 0x21, 0x31]
     isr = rd(lib, cpu, DMA1 + DMA_ISR)[1]
     assert isr & tcif(2) and isr & tcif(3)
+
+
+# ---- BK4819 on the PY32 board (CSN = PF9, SCL = PB8, SDA = PB9) ----------
+
+GPIOB_BASE = 0x50000400
+BK_CSN, BK_SCL, BK_SDA = (GPIOF, 1 << 9), (GPIOB_BASE, 1 << 8), (GPIOB_BASE, 1 << 9)
+
+
+class BkLink:
+    """The firmware's bit-bang driver, over the PY32 GPIO registers."""
+
+    def __init__(self, lib, cpu):
+        self.lib, self.cpu = lib, cpu
+        for (base, bit) in (BK_CSN, BK_SCL, BK_SDA):
+            pin = bit.bit_length() - 1
+            moder = rd(lib, cpu, base + MODER)[1]
+            wr(lib, cpu, base + MODER, (moder & ~(3 << (2 * pin))) | mode(pin, 1))
+        self._set(BK_CSN)
+        self._set(BK_SCL)
+        self._set(BK_SDA)
+
+    def _set(self, pin):
+        wr(self.lib, self.cpu, pin[0] + BSRR, pin[1])
+
+    def _clear(self, pin):
+        wr(self.lib, self.cpu, pin[0] + BSRR, pin[1] << 16)
+
+    def _sda_input(self, as_input):
+        base, bit = BK_SDA
+        pin = bit.bit_length() - 1
+        moder = rd(self.lib, self.cpu, base + MODER)[1] & ~(3 << (2 * pin))
+        wr(self.lib, self.cpu, base + MODER, moder | (0 if as_input else mode(pin, 1)))
+
+    def _write_bits(self, value, nbits):
+        self._clear(BK_SCL)
+        for i in range(nbits):
+            (self._set if (value >> (nbits - 1 - i)) & 1 else self._clear)(BK_SDA)
+            self._set(BK_SCL)
+            self._clear(BK_SCL)
+
+    def _read_bits(self, nbits):
+        self._sda_input(True)
+        value = 0
+        for _ in range(nbits):
+            bit = rd(self.lib, self.cpu, BK_SDA[0] + IDR)[1] & BK_SDA[1]
+            value = (value << 1) | (1 if bit else 0)
+            self._set(BK_SCL)
+            self._clear(BK_SCL)
+        self._sda_input(False)
+        return value
+
+    def write_register(self, addr, data):
+        self._set(BK_CSN)
+        self._clear(BK_SCL)
+        self._clear(BK_CSN)
+        self._write_bits(addr & 0x7F, 8)
+        self._write_bits(data, 16)
+        self._set(BK_CSN)
+        self._set(BK_SCL)
+
+    def read_register(self, addr):
+        self._set(BK_CSN)
+        self._clear(BK_SCL)
+        self._clear(BK_CSN)
+        self._write_bits((addr & 0x7F) | 0x80, 8)
+        value = self._read_bits(16)
+        self._set(BK_CSN)
+        self._set(BK_SCL)
+        return value
+
+
+def test_py32_bk4819_register_roundtrip(lib, py32):
+    cpu = py32(app_image())
+    link = BkLink(lib, cpu)
+    link.write_register(0x30, 0xBEEF)
+    assert link.read_register(0x30) == 0xBEEF
+    link.write_register(0x30, 0x1234)
+    assert link.read_register(0x30) == 0x1234
+
+
+def test_py32_bk4819_idle_register_0c_bit0_clear(lib, py32):
+    # BK4819_Init loops while REG_0C bit 0 is set: the chip must answer
+    cpu = py32(app_image())
+    link = BkLink(lib, cpu)
+    assert link.read_register(0x0C) & 1 == 0
