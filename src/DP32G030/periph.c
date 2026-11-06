@@ -122,6 +122,10 @@ static void dp32g030_gpio_notify(dp32g030_cpu_t *c, unsigned port,
     h->gpio_change(h->user, port, now, c->periph.gpio[port].dir);
 }
 
+uint32_t dp32g030_gpio_dir_dp32(const dp32g030_cpu_t *c, unsigned port) {
+  return c->periph.gpio[port].dir;
+}
+
 void dp32g030_gpio_set_input_dp32(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                              uint32_t value) {
   dp32g030_gpio_t *g;

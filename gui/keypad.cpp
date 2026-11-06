@@ -4,14 +4,8 @@
 
 namespace {
 
-constexpr unsigned kPortA = 0;
-constexpr unsigned kPortC = 2;
-constexpr unsigned kColShift = 3;       // PA3..PA6 are the four columns
-constexpr uint32_t kColMask = 0xFu << kColShift;
-constexpr unsigned kRowFirstPin = 10;   // PA10..PA13 are the four rows
-constexpr uint32_t kPttBit = 1u << 5;   // PC5
-
-// keyboard[] of the UV-K5 firmware: [row][column].
+// keyboard[] of the UV-K5 firmwares: [row][column]. The same logical matrix on
+// every chip; only the pins differ.
 constexpr Key kMatrix[4][4] = {
     {Key::Menu, Key::K1, Key::K4, Key::K7},
     {Key::Up, Key::K2, Key::K5, Key::K8},
@@ -25,6 +19,14 @@ constexpr const char *kNames[int(Key::Count)] = {
 };
 
 } // namespace
+
+const KeypadWiring kWiringDp32g030 = {0, 10, 1, 0, 3, 1, 2, 5};
+const KeypadWiring kWiringPy32f071 = {1, 6, -1, 1, 15, -1, 1, 10};
+
+const KeypadWiring &keypad_wiring_for(const char *soc_name) {
+  return std::strcmp(soc_name, "py32f071") == 0 ? kWiringPy32f071
+                                                : kWiringDp32g030;
+}
 
 const char *key_name(Key k) { return kNames[int(k)]; }
 
@@ -44,16 +46,18 @@ void Keypad::set(Key k, bool pressed) {
 }
 
 void Keypad::refresh() {
-  if (refreshing_ || !wired_)
+  if (refreshing_)
     return;
   refreshing_ = true;
 
-  const dp32g030_gpio_t &a = cpu_->periph.gpio[kPortA];
-  unsigned cols = 0xF;
+  const KeypadWiring &w = wiring_;
+  uint32_t level = dp32g030_gpio_pins(cpu_, w.out_port);
+  uint32_t dir = dp32g030_gpio_dir(cpu_, w.out_port);
+  unsigned cols = 0xF; // bit c = column c reads high
 
   for (int r = 0; r < 4; r++) {
-    uint32_t pin = 1u << (kRowFirstPin + unsigned(r));
-    bool driven_low = (a.dir & pin) && !(a.out & pin);
+    uint32_t pin = 1u << (w.out_first + r * w.out_step);
+    bool driven_low = (dir & pin) && !(level & pin);
     if (!driven_low)
       continue;
     for (int c = 0; c < 4; c++)
@@ -65,13 +69,21 @@ void Keypad::refresh() {
   if (down_[int(Key::Side2)])
     cols &= ~2u;
 
-  dp32g030_gpio_set_input(cpu_, kPortA, kColMask, cols << kColShift);
-  dp32g030_gpio_set_input(cpu_, kPortC, kPttBit,
-                          down_[int(Key::Ptt)] ? 0 : kPttBit);
+  uint32_t mask = 0, value = 0;
+  for (int c = 0; c < 4; c++) {
+    uint32_t pin = 1u << (w.in_first + c * w.in_step);
+    mask |= pin;
+    if (cols & (1u << c))
+      value |= pin;
+  }
+  dp32g030_gpio_set_input(cpu_, w.in_port, mask, value);
+  uint32_t ptt = 1u << w.ptt_pin;
+  dp32g030_gpio_set_input(cpu_, w.ptt_port, ptt,
+                          down_[int(Key::Ptt)] ? 0 : ptt);
   refreshing_ = false;
 }
 
 void Keypad::on_gpio_change(unsigned port) {
-  if (port == kPortA)
+  if (port == wiring_.out_port)
     refresh();
 }

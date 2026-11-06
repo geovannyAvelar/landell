@@ -478,6 +478,8 @@ void dp32g030_cpu_reset(dp32g030_cpu_t *c);
 void dp32g030_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                              uint32_t value);
 uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port);
+/* Pins of `port` configured as outputs (1 = output). */
+uint32_t dp32g030_gpio_dir(const dp32g030_cpu_t *c, unsigned port);
 void dp32g030_uart_rx(dp32g030_cpu_t *c, unsigned uart, uint8_t byte);
 /* Analog level (12-bit) seen on SARADC channel `ch`. */
 void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value);

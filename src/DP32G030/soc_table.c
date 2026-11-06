@@ -22,6 +22,7 @@ const dp32g030_soc_t dp32g030_soc_dp32g030 = {
     .lcd = {.spi = 0, .a0_port = 1, .a0_pin = 9},
     .gpio_set_input = dp32g030_gpio_set_input_dp32,
     .gpio_pins = dp32g030_gpio_pins_dp32,
+    .gpio_dir = dp32g030_gpio_dir_dp32,
     .adc_set_input = dp32g030_adc_set_input_dp32,
     .bk4819_drive_sda = dp32g030_bk4819_drive_sda_dp32,
     .defaults = dp32g030_defaults_dp32,
@@ -67,4 +68,8 @@ uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
 
 void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value) {
   c->soc->adc_set_input(c, ch, value);
+}
+
+uint32_t dp32g030_gpio_dir(const dp32g030_cpu_t *c, unsigned port) {
+  return c->soc->gpio_dir(c, port);
 }

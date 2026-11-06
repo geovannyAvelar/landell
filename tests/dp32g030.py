@@ -438,6 +438,8 @@ def load_lib(workdir):
     lib.dp32g030_gpio_set_input.argtypes = [
         ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint32, ctypes.c_uint32,
     ]
+    lib.dp32g030_gpio_dir.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint]
+    lib.dp32g030_gpio_dir.restype = ctypes.c_uint32
     lib.dp32g030_gpio_pins.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint]
     lib.dp32g030_gpio_pins.restype = ctypes.c_uint32
     lib.dp32g030_uart_rx.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint8]

@@ -135,3 +135,6 @@ uint8_t dp32g030_extflash_xfer(dp32g030_cpu_t *c, uint8_t tx);
    vector's flash window; loading also requires it to be in the app area. */
 bool py32_looks_like_py32(const uint8_t *fw, size_t size);
 bool py32_image_ok(const uint8_t *fw, size_t size);
+
+uint32_t dp32g030_gpio_dir_dp32(const dp32g030_cpu_t *c, unsigned port);
+uint32_t py32_gpio_dir(const dp32g030_cpu_t *c, unsigned port);

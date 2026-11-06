@@ -147,18 +147,84 @@ int main() {
     CHECK(cols(cpu) == ((i & 1) ? 0xFu : 0xEu));
   }
 
-  { // unwired_keypad_does_not_touch_gpio
-    dp32g030_cpu_t *other = make_cpu();
-    Keypad idle(other);
+  { // PY32F071 board wiring: rows PB6..PB3 (outputs), columns PB15..PB12, PTT PB10
+    const dp32g030_soc_t *soc = dp32g030_soc_by_name("py32f071");
+    const uint8_t app[16] = {0x00, 0x40, 0x00, 0x20, 0x09, 0x28, 0x00, 0x08};
+    dp32g030_cpu_t *py = dp32g030_cpu_new_soc(soc, app, sizeof app);
+    CHECK(py != nullptr);
+    if (py) {
+      constexpr uint32_t kGpiob = 0x50000400, kModer = 0x00, kBsrr = 0x18;
+      constexpr unsigned kPortB = 1;
+      auto set_pin = [&](unsigned pin, bool high) {
+        dp32g030_bus_write(py, kGpiob + kBsrr, 4, high ? 1u << pin : 1u << (16 + pin));
+      };
+      auto cols_py = [&]() { return (dp32g030_gpio_pins(py, kPortB) >> 12) & 0xFu; };
+      // rows PB6, PB5, PB4, PB3 as outputs, all high
+      uint32_t moder = 0;
+      for (unsigned p = 3; p <= 6; p++)
+        moder |= 1u << (2 * p);
+      dp32g030_bus_write(py, kGpiob + kModer, 4, moder);
+      auto drive_py = [&](int low) {
+        for (int r = 0; r < 4; r++)
+          set_pin(6 - unsigned(r), r != low);
+      };
+      Keypad pp(py, keypad_wiring_for("py32f071"));
+      pp.refresh();
+      drive_py(-1);
+      CHECK(cols_py() == 0xF); // initial_refresh_drives_high
 
-    idle.set_wired(false);
-    idle.refresh();
-    idle.set(Key::Menu, true);
-    idle.set(Key::Ptt, true);
-    CHECK(other->periph.gpio[0].driven == 0);
-    CHECK(other->periph.gpio[2].driven == 0);
-    CHECK(idle.pressed(Key::Menu)); // the state is still tracked for the panel
-    dp32g030_cpu_free(other);
+      for (int r = 0; r < 4; r++) { // each_matrix_position_py32
+        for (int c = 0; c < 4; c++) {
+          Key k = kMatrix[r][c];
+          drive_py(r);
+          pp.set(k, true);
+          // column c is the c-th input, PB(15 - c): bit (3 - c) of the nibble
+          CHECK(cols_py() == (0xFu & ~(1u << (3 - c))));
+          drive_py((r + 1) % 4);
+          pp.refresh();
+          CHECK(cols_py() == 0xF); // another row selected: no pull
+          drive_py(r);
+          pp.set(k, false);
+          CHECK(cols_py() == 0xF);
+        }
+      }
+      drive_py(-1);
+      pp.set(Key::Side1, true); // side1_pb15 / side2_pb14 with every row high
+      CHECK(cols_py() == 0x7);
+      pp.set(Key::Side2, true);
+      CHECK(cols_py() == 0x3);
+      pp.set(Key::Side1, false);
+      pp.set(Key::Side2, false);
+      CHECK(cols_py() == 0xF);
+
+      pp.set(Key::Ptt, true); // ptt_pb10
+      CHECK((dp32g030_gpio_pins(py, kPortB) & (1u << 10)) == 0);
+      pp.set(Key::Ptt, false);
+      CHECK((dp32g030_gpio_pins(py, kPortB) & (1u << 10)) != 0);
+
+      // a row configured as an input never pulls a column low
+      drive_py(0);
+      dp32g030_bus_write(py, kGpiob + kModer, 4, moder & ~(1u << (2 * 6)));
+      pp.set(Key::Menu, true);
+      CHECK(cols_py() == 0xF);
+      pp.set(Key::Menu, false);
+      dp32g030_bus_write(py, kGpiob + kModer, 4, moder);
+
+      // hook_recompute_py32: the firmware drives a row through the bus
+      py->periph.hooks.user = &pp;
+      py->periph.hooks.gpio_change = [](void *u, unsigned port, uint32_t, uint32_t) {
+        static_cast<Keypad *>(u)->on_gpio_change(port);
+      };
+      drive_py(-1);
+      pp.set(Key::K5, true); // group 2 (PB5), third column (PB13)
+      CHECK(cols_py() == 0xF);
+      set_pin(5, false); // select PB5
+      CHECK(cols_py() == (0xFu & ~(1u << 1)));
+      set_pin(5, true);
+      CHECK(cols_py() == 0xF);
+      pp.set(Key::K5, false);
+      dp32g030_cpu_free(py);
+    }
   }
 
   dp32g030_cpu_free(cpu);

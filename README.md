@@ -95,7 +95,7 @@ meson compile -C build
 
 `--soc auto` (the default) picks the chip from the image's reset vector: an address in `0x08000000..0x0801FFFF` selects `py32f071`, anything else `dp32g030`. `--soc dp32g030|py32f071` forces one. `py32f071` refuses an image whose reset vector is outside its app area (`0x08002800` up), such as a bootloader or a full flash dump; `dp32g030` accepts any image up to 64 KB, so forcing it on a PY32 image runs garbage. `landell` does not apply the board defaults below (use `--adc`); `landell-gui` does.
 
-PY32F071 notes: the Cortex-M0+ VTOR is modeled (the bootloader hand-off is emulated: the app boots with its vector table at `0x08002800`, clocks running). Peripherals behave only as far as the F4HWN Fusion firmware needs: GPIO, SPI (the LCD on SPI1, the external PY25Q16 flash on SPI2 with DMA), ADC, DMA, and the BK4819 on PF9/PB8/PB9. The firmware keeps its settings and calibration in that 2 MiB flash (empty at start); `landell-gui` presets a factory-style battery calibration (flash `0x010140`) and the battery ADC (channel 8) so the firmware boots to its normal screen. Not modeled yet: the V3/K1 key matrix (the panel is drawn but its keys do nothing on `py32f071`), USB, audio, the I2C devices, and anything the Fusion firmware does not touch on its way to the main screen.
+PY32F071 notes: the Cortex-M0+ VTOR is modeled (the bootloader hand-off is emulated: the app boots with its vector table at `0x08002800`, clocks running). Peripherals behave only as far as the F4HWN Fusion firmware needs: GPIO, SPI (the LCD on SPI1, the external PY25Q16 flash on SPI2 with DMA), ADC, DMA, and the BK4819 on PF9/PB8/PB9. The firmware keeps its settings and calibration in that 2 MiB flash (empty at start); `landell-gui` presets a factory-style battery calibration (flash `0x010140`) and the battery ADC (channel 8) so the firmware boots to its normal screen. The UV-K5 V3 key matrix (rows PB6-PB3, columns PB15-PB12, PTT on PB10) is wired to the GUI panel and the PC keyboard. Not modeled yet: the K1's own keys and layout (it shares the V3 matrix here), USB, audio, the I2C devices, and anything the Fusion firmware does not touch on its way to the main screen.
 
 ## Usage
 
@@ -172,7 +172,7 @@ Keys work with the mouse (click and hold a button) or the keyboard:
 | `Space` | PTT (hold) |
 | `F1` / `F2` | side keys 1 / 2 |
 
-The keys go through the real keypad matrix on GPIOA (rows PA10-PA13, columns PA3-PA6) and PTT on PC5. The firmware debounces over several ms, so hold a key for a moment. The radio wakes its backlight on the first press after a timeout and ignores that press, as the real UV-K5 does.
+The keys go through the real keypad matrix on GPIO: on `dp32g030` rows PA10-PA13, columns PA3-PA6 and PTT on PC5; on `py32f071` rows PB6-PB3, columns PB15-PB12 and PTT on PB10. The firmware debounces over several ms, so hold a key for a moment (2-3 s on the F4HWN Fusion, since the emulator runs slower than the radio). The radio wakes its backlight on the first press after a timeout and ignores that press, as the real UV-K5 does.
 
 Real-time pacing assumes 48 MHz. Use an optimized build; if the emulator cannot keep up it prints a warning and runs slower than real time. Without `-Dgui=enabled` the build is unchanged.
 

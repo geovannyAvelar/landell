@@ -774,3 +774,18 @@ def test_py32_rejects_bootloader_slot_images(lib):
         assert not lib.dp32g030_cpu_new_soc(soc, emu.to_buf(data), len(data)), hex(reset)
     ok = struct.pack("<II", SRAM_TOP, 0x08002801) + bytes(56)  # first app address
     assert lib.dp32g030_cpu_new_soc(soc, emu.to_buf(ok), len(ok))
+
+
+def test_gpio_dir_dispatches_per_soc(lib, py32):
+    cpu = py32(app_image())
+    assert lib.dp32g030_gpio_dir(cpu, PORT_A) == 0  # everything analog or input
+    wr(lib, cpu, GPIOA + MODER, mode(3, 1) | mode(7, 1))
+    assert lib.dp32g030_gpio_dir(cpu, PORT_A) == (1 << 3) | (1 << 7)
+    soc = lib.dp32g030_soc_by_name(b"dp32g030")
+    data = emu.firmware([BKPT])
+    dp = lib.dp32g030_cpu_new_soc(soc, emu.to_buf(data), len(data))
+    try:
+        wr(lib, dp, 0x40061004, 0x24)  # GPIOC DIR
+        assert lib.dp32g030_gpio_dir(dp, 2) == 0x24
+    finally:
+        lib.dp32g030_cpu_free(dp)

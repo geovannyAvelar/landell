@@ -507,10 +507,7 @@ int main(int argc, char **argv) {
   }
 
   Ui ui;
-  Keypad keypad(cpu);
-  // The key matrix here is the UV-K5 V1/V2 one; the V3/K1 matrix comes with
-  // their radio models, until then those keys do not reach the firmware.
-  keypad.set_wired(!std::strcmp(dp32g030_soc_name(soc), "dp32g030"));
+  Keypad keypad(cpu, keypad_wiring_for(dp32g030_soc_name(soc)));
   ui.keypad = &keypad;
   cpu->periph.hooks.user = &ui;
   cpu->periph.hooks.lcd_update = lcd_updated;

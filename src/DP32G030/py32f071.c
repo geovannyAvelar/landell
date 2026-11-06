@@ -255,6 +255,7 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .lcd = {.spi = 1, .a0_port = 0, .a0_pin = 6},
     .gpio_set_input = py32_gpio_set_input,
     .gpio_pins = py32_gpio_pins,
+    .gpio_dir = py32_gpio_dir,
     .extflash = {.present = true, .spi = 2, .cs_port = 0, .cs_pin = 3},
     .adc_set_input = py32_adc_set_input,
     .bk4819_drive_sda = py32_bk4819_drive_sda,

@@ -70,6 +70,10 @@ uint32_t py32_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
   return port < PY32_NGPIO ? py32_gpio_level(&c->py32.gpio[port]) : 0;
 }
 
+uint32_t py32_gpio_dir(const dp32g030_cpu_t *c, unsigned port) {
+  return port < PY32_NGPIO ? mode_mask(c->py32.gpio[port].moder, 1) : 0;
+}
+
 void py32_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                          uint32_t value) {
   if (port >= PY32_NGPIO)
