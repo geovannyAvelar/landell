@@ -258,6 +258,23 @@ typedef struct {
   bool busy;
 } dp32g030_iic_t;
 
+/* ST7565 (or compatible): an external LCD controller, driven over the
+   real SPI0 peripheral (not bit-banged) plus GPIOB pin 9 (A0: low for
+   a command byte, high for a pixel-data byte). 132 columns x 8 pages
+   of 8 vertically-packed pixels each (a real ST7565's full GDDRAM);
+   the UV-K5's visible 128x64 window starts at column 4. See README
+   for the command subset modeled and what's approximate. */
+typedef struct {
+  uint8_t ram[8][132];
+  uint8_t page, col;    /* current GDDRAM address (page 0-7, col 0-131) */
+  uint8_t start_line;   /* vertical scroll offset, 0-63 */
+  uint8_t contrast;     /* stored only; no visual effect modeled */
+  bool pending_contrast; /* mid-way through the 2-byte SET_EV command */
+  bool display_on;
+  bool seg_reverse, com_reverse; /* column/row mirroring */
+  bool inverse, all_on;
+} dp32g030_lcd_t;
+
 /* BK4819: an external RF transceiver chip, bit-banged over 3 GPIOC pins
    (not a DP32G030 peripheral). SCN=pin0 (chip select), SCL=pin1 (clock),
    SDA=pin2 (data); 8-bit address (bit 7 = read) then 16 bits of data,
@@ -307,6 +324,10 @@ typedef struct {
      4=VHF LNA, 5=red LED, 6=green LED (see BK4819_GPIO_PIN_t in the
      real driver; GPIO2 is unused there). */
   void (*bk4819_gpio_change)(void *user, uint8_t state);
+  /* LCD: a command or data byte just changed display state (GDDRAM, the
+     address pointer, or an on/off/mirroring/scroll setting). Fired after
+     the change; read it back with dp32g030_lcd_get_pixel(). */
+  void (*lcd_update)(void *user);
 } dp32g030_hooks_t;
 
 typedef struct {
@@ -326,6 +347,7 @@ typedef struct {
   dp32g030_aes_t aes;
   dp32g030_iic_t iic[2];
   dp32g030_bk4819_t bk4819;
+  dp32g030_lcd_t lcd;
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 
@@ -422,3 +444,15 @@ bool dp32g030_bk4819_fsk_rx_push(dp32g030_cpu_t *c, uint16_t word);
 /* BK4819: signal that the current FSK packet is complete, raising
    FSK_RX_FINISHED (REG_02). Does not touch the FIFO itself. */
 void dp32g030_bk4819_fsk_rx_finish(dp32g030_cpu_t *c);
+
+/* LCD: whether the display is on and this is currently showing a lit
+   pixel at physical column `x` (0-131) / row `y` (0-63), after
+   applying SEG/COM mirroring, the vertical scroll (start line),
+   inverse display and the all-pixels-on override. The UV-K5's visible
+   128x64 window is x in [4, 131]. */
+bool dp32g030_lcd_get_pixel(const dp32g030_cpu_t *c, unsigned x, unsigned y);
+/* LCD: the raw GDDRAM byte at (page 0-7, col 0-131); bit n is row
+   page*8+n. No mirroring, scrolling or on/off applied. */
+uint8_t dp32g030_lcd_ram(const dp32g030_cpu_t *c, unsigned page, unsigned col);
+/* LCD: whether the display is currently on (DISPLAY_ON_OFF). */
+bool dp32g030_lcd_is_on(const dp32g030_cpu_t *c);

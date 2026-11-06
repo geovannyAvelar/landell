@@ -64,6 +64,11 @@ uint64_t dp32g030_rtc_wdt_next_event(const dp32g030_cpu_t *c);
 void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
                                uint32_t after, uint32_t dir);
 
+/* LCD (lcd.c): called from dp32g030_spi_write for SPI0 whenever a byte
+   is actually clocked out (SPE and MSTR set). `data` is GPIOB pin 9
+   (A0)'s current level: false for a command byte, true for pixel data. */
+void dp32g030_lcd_spi_byte(dp32g030_cpu_t *c, uint8_t byte, bool data);
+
 /* Shared prescaler helper (defined in timer_pwm.c): run a shared-divider
    up-counter block forward by `cycles` core clocks, firing `tick_one` once
    per elapsed (div+1)-cycle period; and compute the core clocks until

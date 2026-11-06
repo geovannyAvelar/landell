@@ -103,6 +103,7 @@ I2C_READ_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, c
 I2C_STOP_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
 BK4819_FREQ_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32)
 BK4819_GPIO_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint8)
+LCD_UPDATE_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
 
 class Spi(ctypes.Structure):
@@ -271,6 +272,22 @@ class Iic(ctypes.Structure):
     ]
 
 
+class Lcd(ctypes.Structure):
+    _fields_ = [
+        ("ram", (ctypes.c_uint8 * 132) * 8),
+        ("page", ctypes.c_uint8),
+        ("col", ctypes.c_uint8),
+        ("start_line", ctypes.c_uint8),
+        ("contrast", ctypes.c_uint8),
+        ("pending_contrast", ctypes.c_bool),
+        ("display_on", ctypes.c_bool),
+        ("seg_reverse", ctypes.c_bool),
+        ("com_reverse", ctypes.c_bool),
+        ("inverse", ctypes.c_bool),
+        ("all_on", ctypes.c_bool),
+    ]
+
+
 class Bk4819(ctypes.Structure):
     _fields_ = [
         ("regs", ctypes.c_uint16 * 128),
@@ -310,6 +327,7 @@ class Hooks(ctypes.Structure):
         ("i2c_stop", I2C_STOP_CB),
         ("bk4819_freq_change", BK4819_FREQ_CB),
         ("bk4819_gpio_change", BK4819_GPIO_CB),
+        ("lcd_update", LCD_UPDATE_CB),
     ]
 
 
@@ -334,6 +352,7 @@ class Periph(ctypes.Structure):
         ("aes", Aes),
         ("iic", Iic * 2),
         ("bk4819", Bk4819),
+        ("lcd", Lcd),
         ("hooks", Hooks),
     ]
 
@@ -429,6 +448,12 @@ def load_lib(workdir):
     lib.dp32g030_bk4819_fsk_rx_push.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint16]
     lib.dp32g030_bk4819_fsk_rx_push.restype = ctypes.c_bool
     lib.dp32g030_bk4819_fsk_rx_finish.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_lcd_get_pixel.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint]
+    lib.dp32g030_lcd_get_pixel.restype = ctypes.c_bool
+    lib.dp32g030_lcd_ram.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint, ctypes.c_uint]
+    lib.dp32g030_lcd_ram.restype = ctypes.c_uint8
+    lib.dp32g030_lcd_is_on.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_lcd_is_on.restype = ctypes.c_bool
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,
