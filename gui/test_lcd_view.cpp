@@ -49,7 +49,10 @@ int main() {
   if (!cpu)
     return 1;
   cpu->periph.lcd.display_on = true;
-  cpu->periph.lcd.ram[0][0] = 0x01; // pixel (0,0) on
+  // Firmware setup (SEG reverse, as the UV-K5 driver sends 0xA1): the glass
+  // shows RAM columns 4..131 left to right (segments 127..0).
+  cpu->periph.lcd.seg_reverse = true;
+  cpu->periph.lcd.ram[0][4] = 0x01; // pixel (0,0) on
 
   { // display_on_pixel_on_color / display_on_pixel_off_color
     Frame f(cpu, 6);
@@ -63,6 +66,26 @@ int main() {
     Frame f(cpu, 1);
     CHECK(f.center(0, 0) == pal.pixel_on);
     CHECK(f.center(1, 0) == pal.pixel_off);
+  }
+  { // glass_mounting_without_seg_reverse: RAM column 127 is on the left edge
+    cpu->periph.lcd.seg_reverse = false;
+    cpu->periph.lcd.ram[0][4] = 0x00;
+    cpu->periph.lcd.ram[0][127] = 0x01;
+    Frame f(cpu, 6);
+    CHECK(f.center(0, 0) == pal.pixel_on);
+    CHECK(f.center(127, 0) == pal.pixel_off);
+    cpu->periph.lcd.ram[0][127] = 0x00;
+    cpu->periph.lcd.ram[0][4] = 0x01;
+    cpu->periph.lcd.seg_reverse = true;
+  }
+  { // hidden_ram_columns_not_drawn: RAM columns 0..3 are off the glass
+    cpu->periph.lcd.ram[0][0] = 0xFF;
+    Frame f(cpu, 6);
+    for (int y = 0; y < 8; y++)
+      for (int x = 0; x < 128; x++)
+        if (x != 0 || y != 0)
+          CHECK(f.center(x, y) == pal.pixel_off);
+    cpu->periph.lcd.ram[0][0] = 0x00;
   }
   { // display_off_is_flat
     cpu->periph.lcd.display_on = false;

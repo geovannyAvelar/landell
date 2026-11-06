@@ -6,6 +6,9 @@
 namespace {
 constexpr int kLcdWidth = 128;
 constexpr int kLcdHeight = 64;
+// The controller has 132 segments but the UV-K5 glass uses 128 of them, wired
+// right to left: screen column x shows segment (kLcdWidth - 1 - x). With SEG
+// reverse (what the firmware sends) that is RAM column 4 + x.
 
 const LcdPalette kPalette = {
     /*off*/ SkColorSetRGB(0x2B, 0x2F, 0x2A),
@@ -31,7 +34,7 @@ void lcd_view_draw(const dp32g030_cpu_t *cpu, SkCanvas *canvas, int scale) {
 
   for (int y = 0; y < kLcdHeight; y++) {
     for (int x = 0; x < kLcdWidth; x++) {
-      paint.setColor(dp32g030_lcd_get_pixel(cpu, unsigned(x), unsigned(y))
+      paint.setColor(dp32g030_lcd_get_pixel(cpu, unsigned(kLcdWidth - 1 - x), unsigned(y))
                          ? kPalette.pixel_on
                          : kPalette.pixel_off);
       canvas->drawRect(SkRect::MakeXYWH(float(x * scale), float(y * scale),
