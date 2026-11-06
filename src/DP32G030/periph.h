@@ -99,3 +99,14 @@ bool py32_spi_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
 bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
                     uint32_t val);
 void py32_spi_reset(dp32g030_cpu_t *c);
+
+void dp32g030_adc_set_input_dp32(dp32g030_cpu_t *c, unsigned ch,
+                                 uint32_t value);
+
+/* PY32F071 ADC (py32_adc.c), STM32F1-style. */
+bool py32_adc_read(dp32g030_cpu_t *c, uint32_t off, unsigned size,
+                   uint32_t *out);
+bool py32_adc_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
+                    uint32_t val);
+void py32_adc_reset(dp32g030_cpu_t *c);
+void py32_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value);

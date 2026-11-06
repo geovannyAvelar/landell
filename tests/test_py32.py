@@ -313,3 +313,50 @@ def test_py32_spi_hook_and_status(lib, py32):
     assert sr & SR_TXE and sr & SR_RXNE
     assert rd(lib, cpu, SPI1 + SPI_DR)[1] == 0x5A
     assert not rd(lib, cpu, SPI1 + SPI_SR)[1] & SR_RXNE  # reading DR clears it
+
+
+# ---- ADC (STM32F1-style) --------------------------------------------------
+
+ADC1 = 0x40012400
+ADC_SR, ADC_CR1, ADC_CR2, ADC_SQR3, ADC_DR = 0x00, 0x04, 0x08, 0x38, 0x50
+CR2_ADON, CR2_CONT, CR2_CAL, CR2_SWSTART = 1 << 0, 1 << 1, 1 << 2, 1 << 22
+SR_EOC = 1 << 1
+
+
+def test_py32_adc_calibration_self_clears(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_ADON | CR2_CAL)
+    cr2 = rd(lib, cpu, ADC1 + ADC_CR2)[1]
+    assert cr2 & CR2_ADON
+    assert not cr2 & CR2_CAL  # the firmware waits for this to clear
+
+
+def test_py32_adc_single_conversion(lib, py32):
+    cpu = py32(app_image())
+    lib.dp32g030_adc_set_input(cpu, 5, 1234)
+    wr(lib, cpu, ADC1 + ADC_SQR3, 5)  # first conversion: channel 5
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_ADON)
+    assert not rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_ADON | CR2_SWSTART)
+    assert rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC
+    assert not rd(lib, cpu, ADC1 + ADC_CR2)[1] & CR2_SWSTART  # self-clears
+    assert rd(lib, cpu, ADC1 + ADC_DR)[1] == 1234
+    assert not rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC  # reading DR clears EOC
+
+
+def test_py32_adc_needs_adon(lib, py32):
+    cpu = py32(app_image())
+    lib.dp32g030_adc_set_input(cpu, 0, 99)
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_SWSTART)  # ADON off
+    assert not rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC
+
+
+def test_py32_adc_continuous_reconverts_after_dr_read(lib, py32):
+    cpu = py32(app_image())
+    lib.dp32g030_adc_set_input(cpu, 2, 10)
+    wr(lib, cpu, ADC1 + ADC_SQR3, 2)
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_ADON | CR2_CONT | CR2_SWSTART)
+    assert rd(lib, cpu, ADC1 + ADC_DR)[1] == 10
+    lib.dp32g030_adc_set_input(cpu, 2, 20)
+    assert rd(lib, cpu, ADC1 + ADC_SR)[1] & SR_EOC  # converted again
+    assert rd(lib, cpu, ADC1 + ADC_DR)[1] == 20

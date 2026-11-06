@@ -33,8 +33,8 @@ static uint8_t *dp32g030_bus_sram(dp32g030_cpu_t *c, uint32_t addr,
   return &c->sram[off];
 }
 
-bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
-                       uint32_t *out) {
+static bool bus_read_inner(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
+                           uint32_t *out) {
   if (!dp32g030_bus_valid(addr, size))
     return false;
 
@@ -56,8 +56,8 @@ bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
   return true;
 }
 
-bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
-                        uint32_t val) {
+static bool bus_write_inner(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
+                            uint32_t val) {
   if (!dp32g030_bus_valid(addr, size))
     return false;
 
@@ -72,4 +72,22 @@ bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
   for (unsigned i = 0; i < size; i++)
     p[i] = (uint8_t)(val >> (8 * i));
   return true;
+}
+
+bool dp32g030_bus_read(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
+                       uint32_t *out) {
+  if (bus_read_inner(c, addr, size, out))
+    return true;
+  c->bus_fault_addr = addr;
+  c->bus_fault_write = false;
+  return false;
+}
+
+bool dp32g030_bus_write(dp32g030_cpu_t *c, uint32_t addr, unsigned size,
+                        uint32_t val) {
+  if (bus_write_inner(c, addr, size, val))
+    return true;
+  c->bus_fault_addr = addr;
+  c->bus_fault_write = true;
+  return false;
 }

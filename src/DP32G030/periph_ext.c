@@ -145,7 +145,8 @@ bool dp32g030_spi_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
 #define ADC_IF_HFULL (1u << 17)
 #define ADC_IF_MASK 0x3FFFFu /* per-channel EOC (0-15) + FIFO full/half-full */
 
-void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value) {
+void dp32g030_adc_set_input_dp32(dp32g030_cpu_t *c, unsigned ch,
+                                 uint32_t value) {
   if (ch < DP32G030_ADC_CHANNELS)
     c->periph.adc.input[ch] = value & 0xFFFu;
 }

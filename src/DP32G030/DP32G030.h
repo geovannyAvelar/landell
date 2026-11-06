@@ -371,11 +371,20 @@ typedef struct {
   bool rxne;
 } dp32g030_py32_spi_t;
 
+#define PY32_ADC_CHANNELS 20
+
+typedef struct {
+  uint32_t sr, cr1, cr2, smpr[3], sqr[3], dr;
+  bool started;                      /* a conversion has been started */
+  uint16_t input[PY32_ADC_CHANNELS]; /* levels set by the host */
+} dp32g030_py32_adc_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
   dp32g030_py32_gpio_t gpio[PY32_NGPIO];
   dp32g030_py32_spi_t spi[2]; /* SPI1, SPI2 */
+  dp32g030_py32_adc_t adc;
 } dp32g030_py32_t;
 
 typedef struct {
@@ -402,6 +411,8 @@ typedef struct {
   dp32g030_periph_t periph;
   /* Fields below are not mirrored by the Python test harness. */
   uint32_t vtor;      /* vector table offset (chips with a VTOR only) */
+  uint32_t bus_fault_addr; /* address of the last failed bus access */
+  bool bus_fault_write;    /* ... and whether it was a write */
   dp32g030_py32_t py32;
 } dp32g030_cpu_t;
 

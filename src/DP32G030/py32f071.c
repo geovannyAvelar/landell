@@ -75,10 +75,26 @@ static bool py32_spi_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   return py32_regfile_write(c, r, off, size, val);
 }
 
+static bool py32_adc_region_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                 uint32_t off, unsigned size, uint32_t *out) {
+  if (py32_adc_read(c, off, size, out))
+    return true;
+  return py32_regfile_read(c, r, off, size, out);
+}
+
+static bool py32_adc_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                  uint32_t off, unsigned size, uint32_t val) {
+  if (py32_adc_write(c, off, size, val))
+    return true;
+  return py32_regfile_write(c, r, off, size, val);
+}
+
 #define PY32_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_regfile_read, py32_regfile_write}
 #define PY32_SPI_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_spi_region_read, py32_spi_region_write}
+#define PY32_ADC_REGION(n, b, irq_n) \
+  {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_adc_region_read, py32_adc_region_write}
 #define PY32_GPIO_REGION(n, b) \
   {#n, (b), PY32_REGION_SIZE, -1, -1, py32_gpio_region_read, py32_gpio_region_write}
 
@@ -105,7 +121,7 @@ static const dp32g030_region_t py32f071_regions[] = {
     PY32_REGION(DAC1, 0x40007400u, -1),
     PY32_REGION(LPTIM1, 0x40007C00u, -1),
     PY32_REGION(SYSCFG, 0x40010000u, -1),
-    PY32_REGION(ADC1, 0x40012400u, 12),
+    PY32_ADC_REGION(ADC1, 0x40012400u, 12),
     PY32_REGION(TIM1, 0x40012C00u, 13),
     PY32_SPI_REGION(SPI1, 0x40013000u, 25),
     PY32_REGION(USART1, 0x40013800u, 27),
@@ -162,6 +178,7 @@ static void py32_reset(dp32g030_cpu_t *c) {
       c->py32.regfile[i][j] = 0;
   py32_gpio_reset(c);
   py32_spi_reset(c);
+  py32_adc_reset(c);
   if (idx >= 0)
     c->py32.regfile[idx][0] =
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
@@ -182,4 +199,5 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .lcd = {.spi = 1, .a0_port = 0, .a0_pin = 6},
     .gpio_set_input = py32_gpio_set_input,
     .gpio_pins = py32_gpio_pins,
+    .adc_set_input = py32_adc_set_input,
 };
