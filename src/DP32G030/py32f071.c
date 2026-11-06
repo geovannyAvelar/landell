@@ -195,6 +195,13 @@ static const dp32g030_region_t *py32_region_find(uint32_t addr) {
   return NULL;
 }
 
+uint32_t py32_regfile_word(const dp32g030_cpu_t *c, uint32_t base, uint32_t off) {
+  const dp32g030_region_t *r = py32_region_find(base);
+  int idx = r ? py32_region_index(r) : -1;
+
+  return idx < 0 || off >= PY32_REGION_SIZE ? 0 : c->py32.regfile[idx][off / 4];
+}
+
 #define RCC_CR_HSION (1u << 8)
 #define RCC_CR_HSIRDY (1u << 10)
 #define RCC_CR_PLLON (1u << 24)

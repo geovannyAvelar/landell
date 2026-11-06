@@ -149,3 +149,7 @@ void py32_tim_tick(dp32g030_cpu_t *c, uint64_t cycles);
 uint64_t py32_tim_next_event(const dp32g030_cpu_t *c);
 /* A peripheral raised DMA request `req` (the values of SYSCFG's DMA map). */
 void py32_dma_request(dp32g030_cpu_t *c, unsigned req);
+
+/* Word `off` of the register file of the region at `base` (the block holds no
+   behavior of its own, e.g. SYSCFG). */
+uint32_t py32_regfile_word(const dp32g030_cpu_t *c, uint32_t base, uint32_t off);

@@ -386,6 +386,7 @@ typedef struct {
   uint32_t ccr[PY32_DMA_CHANNELS], cndtr[PY32_DMA_CHANNELS];
   uint32_t cpar[PY32_DMA_CHANNELS], cmar[PY32_DMA_CHANNELS];
   uint32_t cur_p[PY32_DMA_CHANNELS], cur_m[PY32_DMA_CHANNELS]; /* running */
+  uint32_t reload[PY32_DMA_CHANNELS]; /* CNDTR to reload in circular mode */
   bool busy; /* guards against re-entry from DMA-initiated bus accesses */
 } dp32g030_py32_dma_t;
 

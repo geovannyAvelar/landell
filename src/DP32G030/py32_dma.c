@@ -8,17 +8,39 @@
    channel (DIR = 1) clocks the peripheral: each unit is written to CPAR and,
    for every enabled peripheral-to-memory channel (DIR = 0) with the same CPAR,
    one unit is read back into its memory buffer. A peripheral-to-memory channel
-   on its own waits until a matching transmit channel runs. Circular mode and
-   half-transfer flags are not modeled. */
+   on its own waits until a matching transmit channel runs. A channel mapped
+   (SYSCFG CFGR3/CFGR4) to a timer update request is paced instead: one unit
+   per request, and circular mode (CIRC) reloads it after a lap. Half-transfer
+   flags are not modeled. */
 
 #define CCR_EN (1u << 0)
 #define CCR_TCIE (1u << 1)
 #define CCR_HTIE (1u << 2)
 #define CCR_TEIE (1u << 3)
 #define CCR_DIR (1u << 4)
+#define CCR_CIRC (1u << 5)
 #define CCR_PINC (1u << 6)
 #define CCR_MINC (1u << 7)
 #define CCR_MEM2MEM (1u << 14)
+
+#define SYSCFG_BASE 0x40010000u
+#define DMAREQ_TIM6_UP 0x26u
+#define DMAREQ_TIM7_UP 0x27u
+
+/* The DMA request mapped to channel `n` (0-based) by SYSCFG CFGR3/CFGR4. */
+static unsigned dma_map(const dp32g030_cpu_t *c, unsigned n) {
+  uint32_t w = py32_regfile_word(c, SYSCFG_BASE, n < 4 ? 0x08u : 0x0Cu);
+
+  return (w >> (8 * (n & 3u))) & 0x3Fu;
+}
+
+/* Request-paced channels wait for their peripheral's request; the others
+   (memory to memory, SPI) run at once. */
+static bool dma_paced(const dp32g030_cpu_t *c, unsigned n) {
+  unsigned m = dma_map(c, n);
+
+  return m == DMAREQ_TIM6_UP || m == DMAREQ_TIM7_UP;
+}
 
 static unsigned psize(uint32_t ccr) { return 1u << ((ccr >> 8) & 3u); }
 static unsigned msize(uint32_t ccr) { return 1u << ((ccr >> 10) & 3u); }
@@ -81,7 +103,7 @@ static void dma_run(dp32g030_cpu_t *c) {
   for (unsigned n = 0; n < PY32_DMA_CHANNELS; n++) {
     uint32_t ccr = d->ccr[n];
 
-    if (!(ccr & CCR_EN) || !d->cndtr[n])
+    if (!(ccr & CCR_EN) || !d->cndtr[n] || dma_paced(c, n))
       continue;
     if (ccr & CCR_MEM2MEM) {
       while (d->cndtr[n] && dma_unit_rx(c, n))
@@ -118,7 +140,8 @@ static void dma_run(dp32g030_cpu_t *c) {
   for (unsigned n = 0; n < PY32_DMA_CHANNELS; n++) {
     uint32_t ccr = d->ccr[n];
 
-    if ((ccr & CCR_EN) && !(ccr & (CCR_DIR | CCR_MEM2MEM)) && !d->cndtr[n])
+    if ((ccr & CCR_EN) && !(ccr & (CCR_DIR | CCR_MEM2MEM)) && !d->cndtr[n] &&
+        !dma_paced(c, n))
       dma_finish(c, n);
   }
   d->busy = false;
@@ -197,6 +220,8 @@ bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
   uint32_t old = *r;
 
   *r = (old & ~(mask << shift)) | v;
+  if (r == &d->cndtr[chan])
+    d->reload[chan] = d->cndtr[chan];
   if (r == &d->ccr[chan] && !(old & CCR_EN) && (*r & CCR_EN)) {
     d->cur_p[chan] = d->cpar[chan];
     d->cur_m[chan] = d->cmar[chan];
@@ -206,7 +231,47 @@ bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
   return true;
 }
 
+/* A peripheral raised request `req`: every enabled channel mapped to it moves
+   one unit. */
 void py32_dma_request(dp32g030_cpu_t *c, unsigned req) {
-  (void)c;
-  (void)req;
+  dp32g030_py32_dma_t *d = &c->py32.dma;
+
+  if (d->busy)
+    return;
+  d->busy = true;
+  for (unsigned n = 0; n < PY32_DMA_CHANNELS; n++) {
+    uint32_t ccr = d->ccr[n];
+
+    if (!(ccr & CCR_EN) || !d->cndtr[n] || dma_map(c, n) != req ||
+        !dma_paced(c, n))
+      continue;
+    if (ccr & CCR_DIR) { /* memory -> peripheral */
+      uint32_t v;
+
+      if (!dp32g030_bus_read(c, d->cur_m[n], msize(ccr), &v) ||
+          !dp32g030_bus_write(c, d->cur_p[n], psize(ccr), v)) {
+        dma_error(d, n);
+        continue;
+      }
+      if (ccr & CCR_MINC)
+        d->cur_m[n] += msize(ccr);
+      if (ccr & CCR_PINC)
+        d->cur_p[n] += psize(ccr);
+      d->cndtr[n]--;
+    } else if (!dma_unit_rx(c, n)) { /* peripheral -> memory */
+      continue;
+    }
+    if (!d->cndtr[n]) {
+      d->isr |= (1u << (4 * n)) | (1u << (4 * n + 1)); /* GIF, TCIF */
+      if (ccr & CCR_CIRC) { /* start the next lap */
+        d->cndtr[n] = d->reload[n];
+        d->cur_p[n] = d->cpar[n];
+        d->cur_m[n] = d->cmar[n];
+      } else {
+        d->ccr[n] &= ~CCR_EN;
+      }
+    }
+  }
+  d->busy = false;
+  dma_update_irq(c);
 }

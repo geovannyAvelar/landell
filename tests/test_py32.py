@@ -952,3 +952,129 @@ def test_py32_tim7_next_event_for_wfi(lib, py32):
     assert lib.dp32g030_soc_next_event(cpu) == 100
     advance(lib, cpu, 30)
     assert lib.dp32g030_soc_next_event(cpu) == 70
+
+
+# ---- request-paced DMA (timer update -> DMA) and circular mode -----------
+
+SYSCFG = 0x40010000
+SYSCFG_CFGR3, SYSCFG_CFGR4 = 0x08, 0x0C
+TIM7_UP, TIM6_UP = 0x27, 0x26
+CCR_CIRC = 1 << 5
+SIZE32 = (2 << 8) | (2 << 10)  # PSIZE = MSIZE = 32 bit
+
+
+def map_dma_channel(lib, cpu, n, request):
+    if n <= 4:
+        reg, shift = SYSCFG_CFGR3, 8 * (n - 1)
+    else:
+        reg, shift = SYSCFG_CFGR4, 8 * (n - 5)
+    cur = rd(lib, cpu, SYSCFG + reg)[1]
+    wr(lib, cpu, SYSCFG + reg, (cur & ~(0x3F << shift)) | (request << shift))
+
+
+def start_tim7(lib, cpu, arr, udis=False):
+    wr(lib, cpu, TIM7 + TIM_ARR, arr)
+    wr(lib, cpu, TIM7 + TIM_DIER, DIER_UDE)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+
+
+def words(lib, cpu, addr, n):
+    return [rd(lib, cpu, addr + 4 * i)[1] for i in range(n)]
+
+
+def test_py32_dma_timer_paced_circular(lib, py32):
+    cpu = py32(app_image())
+    buf, sink = SRAM_BASE + 0x100, SRAM_BASE + 0x400
+    for i, w in enumerate((0xA0, 0xA1, 0xA2, 0xA3)):
+        wr(lib, cpu, buf + 4 * i, w)
+    map_dma_channel(lib, cpu, 7, TIM7_UP)
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_DIR | CCR_CIRC | CCR_MINC | SIZE32, 4, sink, buf)
+    assert rd(lib, cpu, sink) == (True, 0)  # nothing moves until a request
+    start_tim7(lib, cpu, 9)
+    advance(lib, cpu, 9)
+    assert rd(lib, cpu, sink) == (True, 0)
+    for expected in (0xA0, 0xA1, 0xA2, 0xA3, 0xA0, 0xA1):  # one update every 10 cycles
+        advance(lib, cpu, 10)
+        assert rd(lib, cpu, sink) == (True, expected)  # ... and it wraps around
+    assert rd(lib, cpu, ch(7, 0))[1] & CCR_EN  # circular channels stay enabled
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(7)  # a lap completed
+
+
+def test_py32_dma_timer_paced_normal_mode_completes(lib, py32):
+    cpu = py32(app_image())
+    buf, sink = SRAM_BASE + 0x100, SRAM_BASE + 0x400
+    for i in range(3):
+        wr(lib, cpu, buf + 4 * i, 0x10 + i)
+    map_dma_channel(lib, cpu, 5, TIM7_UP)
+    dma_setup(lib, cpu, 5, CCR_EN | CCR_DIR | CCR_MINC | SIZE32, 3, sink, buf)
+    start_tim7(lib, cpu, 4)
+    advance(lib, cpu, 5 * 3)
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(5)
+    assert not rd(lib, cpu, ch(5, 0))[1] & CCR_EN
+    assert rd(lib, cpu, ch(5, 4))[1] == 0
+    wr(lib, cpu, sink, 0xFFFF)
+    advance(lib, cpu, 50)
+    assert rd(lib, cpu, sink)[1] == 0xFFFF  # no transfers after completion
+
+
+def test_py32_dma_paced_channel_ignores_other_requests(lib, py32):
+    cpu = py32(app_image())
+    buf, sink = SRAM_BASE + 0x100, SRAM_BASE + 0x400
+    wr(lib, cpu, buf, 0x77)
+    map_dma_channel(lib, cpu, 7, TIM6_UP)  # TIM6, but only TIM7 runs
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_DIR | CCR_MINC | SIZE32, 1, sink, buf)
+    start_tim7(lib, cpu, 4)
+    advance(lib, cpu, 30)
+    assert rd(lib, cpu, sink)[1] == 0
+
+
+def test_py32_dma_paced_needs_udde_and_enable(lib, py32):
+    cpu = py32(app_image())
+    buf, sink = SRAM_BASE + 0x100, SRAM_BASE + 0x400
+    wr(lib, cpu, buf, 0x55)
+    map_dma_channel(lib, cpu, 7, TIM7_UP)
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_DIR | CCR_CIRC | CCR_MINC | SIZE32, 1, sink, buf)
+    wr(lib, cpu, TIM7 + TIM_ARR, 4)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)  # UDE not set
+    advance(lib, cpu, 30)
+    assert rd(lib, cpu, sink)[1] == 0
+    wr(lib, cpu, TIM7 + TIM_DIER, DIER_UDE)
+    advance(lib, cpu, 5)
+    assert rd(lib, cpu, sink)[1] == 0x55
+    wr(lib, cpu, ch(7, 0), CCR_DIR | CCR_CIRC | CCR_MINC | SIZE32)  # EN cleared
+    wr(lib, cpu, sink, 0)
+    advance(lib, cpu, 30)
+    assert rd(lib, cpu, sink)[1] == 0
+
+
+def test_py32_dma_paced_tc_interrupt(lib, py32):
+    cpu = py32(app_image())
+    buf, sink = SRAM_BASE + 0x100, SRAM_BASE + 0x400
+    map_dma_channel(lib, cpu, 7, TIM7_UP)
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_TCIE | CCR_DIR | CCR_MINC | SIZE32, 2, sink, buf)
+    start_tim7(lib, cpu, 2)
+    advance(lib, cpu, 3)
+    assert not irq_line(cpu, 11)
+    advance(lib, cpu, 3)  # second request: transfer complete
+    assert irq_line(cpu, 11)
+
+
+def test_py32_dma_paced_bus_error_disables_the_channel(lib, py32):
+    cpu = py32(app_image())
+    map_dma_channel(lib, cpu, 7, TIM7_UP)
+    dma_setup(lib, cpu, 7, CCR_EN | CCR_DIR | CCR_CIRC | CCR_MINC | SIZE32, 4,
+              0x60000000, SRAM_BASE + 0x100)  # peripheral address is unmapped
+    start_tim7(lib, cpu, 2)
+    advance(lib, cpu, 3)
+    isr = rd(lib, cpu, DMA1 + DMA_ISR)[1]
+    assert isr & (1 << (4 * 6 + 3))  # TEIF7
+    assert not rd(lib, cpu, ch(7, 0))[1] & CCR_EN
+
+
+def test_py32_dma_spi_mapped_channels_still_run_at_once(lib, py32):
+    cpu = py32(app_image())
+    map_dma_channel(lib, cpu, 4, 0x15)  # SPI2_RD-ish codes are not timer requests
+    src, dst = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    wr(lib, cpu, src, 0x11223344)
+    dma_setup(lib, cpu, 1, CCR_EN | CCR_MEM2MEM | CCR_PINC | CCR_MINC, 4, src, dst)
+    assert rd(lib, cpu, dst) == (True, 0x11223344)
