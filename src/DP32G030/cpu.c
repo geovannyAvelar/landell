@@ -60,6 +60,10 @@ dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
   }
 
   c->soc = soc;
+  if (!dp32g030_extflash_init(c)) {
+    free(c);
+    return NULL;
+  }
   memset(c->flash, 0xFF, sizeof c->flash);
   memcpy(c->flash + offset, fw, size);
   dp32g030_cpu_reset(c);
@@ -152,4 +156,9 @@ uint8_t dp32g030_cpu_run(dp32g030_cpu_t **cpu, size_t size) {
   return EMU_OK;
 }
 
-void dp32g030_cpu_free(dp32g030_cpu_t *c) { free(c); }
+void dp32g030_cpu_free(dp32g030_cpu_t *c) {
+  if (!c)
+    return;
+  free(c->extflash.mem);
+  free(c);
+}

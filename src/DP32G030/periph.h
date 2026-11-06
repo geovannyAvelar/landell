@@ -123,3 +123,10 @@ void dp32g030_bk4819_pins(dp32g030_cpu_t *c, bool scn, bool scl, bool sda,
                           bool scn_scl_out, bool sda_in);
 void dp32g030_bk4819_drive_sda_dp32(dp32g030_cpu_t *c, bool level);
 void py32_bk4819_drive_sda(dp32g030_cpu_t *c, bool level);
+
+/* External SPI flash model (extflash.c). */
+bool dp32g030_extflash_init(dp32g030_cpu_t *c);
+void dp32g030_extflash_reset_bus(dp32g030_cpu_t *c);
+/* Call after any write that can change the chip-select pin. */
+void dp32g030_extflash_cs(dp32g030_cpu_t *c);
+uint8_t dp32g030_extflash_xfer(dp32g030_cpu_t *c, uint8_t tx);

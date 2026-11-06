@@ -566,3 +566,164 @@ def test_py32_bk4819_idle_register_0c_bit0_clear(lib, py32):
     cpu = py32(app_image())
     link = BkLink(lib, cpu)
     assert link.read_register(0x0C) & 1 == 0
+
+
+# ---- External SPI NOR flash (PY25Q16: SPI2, CS on PA3, 2 MiB) ------------
+
+CS_PIN = 1 << 3  # PA3, active low
+
+
+class FlashLink:
+    """Drives the flash through SPI2 byte exchanges and the CS pin."""
+
+    def __init__(self, lib, cpu):
+        self.lib, self.cpu = lib, cpu
+        wr(lib, cpu, GPIOA + MODER, mode(3, 1))
+        wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR | CR1_SPE)
+        self.cs(False)
+
+    def cs(self, selected):
+        wr(self.lib, self.cpu, GPIOA + BSRR, (CS_PIN << 16) if selected else CS_PIN)
+
+    def xfer(self, byte):
+        wr(self.lib, self.cpu, SPI2 + SPI_DR, byte, 1)
+        return rd(self.lib, self.cpu, SPI2 + SPI_DR, 1)[1]
+
+    def command(self, cmd, addr=None, data=(), read=0):
+        self.cs(True)
+        self.xfer(cmd)
+        if addr is not None:
+            for shift in (16, 8, 0):
+                self.xfer((addr >> shift) & 0xFF)
+        for b in data:
+            self.xfer(b)
+        out = [self.xfer(0xFF) for _ in range(read)]
+        self.cs(False)
+        return out
+
+    def status(self):
+        return self.command(0x05, read=1)[0]
+
+    def write_enable(self):
+        self.command(0x06)
+
+    def read(self, addr, n):
+        return self.command(0x03, addr, read=n)
+
+    def program(self, addr, data):
+        self.write_enable()
+        self.command(0x02, addr, data)
+
+    def erase_sector(self, addr):
+        self.write_enable()
+        self.command(0x20, addr)
+
+
+def test_py32_flash_erased_reads_ff(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    assert f.read(0x010000, 4) == [0xFF] * 4
+    assert f.read(0x1FFFFC, 4) == [0xFF] * 4  # last bytes of the 2 MiB part
+
+
+def test_py32_flash_program_and_read(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x00A000, [0x12, 0x34, 0x56])
+    assert f.read(0x00A000, 3) == [0x12, 0x34, 0x56]
+    assert f.read(0x009FFF, 2) == [0xFF, 0x12]  # neighbours untouched
+
+
+def test_py32_flash_program_needs_write_enable(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.command(0x02, 0x1000, [0x00])  # no WEL
+    assert f.read(0x1000, 1) == [0xFF]
+    assert f.status() & 0x02 == 0  # WEL clear
+
+
+def test_py32_flash_status_wel_and_wip(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    assert f.status() == 0
+    f.write_enable()
+    assert f.status() == 0x02  # WEL set, WIP never busy
+    f.command(0x04)  # write disable
+    assert f.status() == 0
+    f.write_enable()
+    f.command(0x02, 0x2000, [0x55])
+    assert f.status() == 0  # WEL clears after a program
+
+
+def test_py32_flash_program_only_clears_bits(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x3000, [0xF0])
+    f.program(0x3000, [0x3C])
+    assert f.read(0x3000, 1) == [0x30]  # 0xF0 & 0x3C
+
+
+def test_py32_flash_sector_erase(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x5000, [0x00, 0x00])
+    f.program(0x5FFE, [0x00, 0x00])
+    f.program(0x6000, [0x00])
+    f.erase_sector(0x5123)  # any address inside the 4 KiB sector
+    assert f.read(0x5000, 2) == [0xFF, 0xFF]
+    assert f.read(0x5FFE, 2) == [0xFF, 0xFF]
+    assert f.read(0x6000, 1) == [0x00]  # the next sector survives
+
+
+def test_py32_flash_page_program_wraps_in_page(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x70FE, [1, 2, 3, 4])  # 256-byte page: wraps to 0x7000
+    assert f.read(0x70FE, 2) == [1, 2]
+    assert f.read(0x7000, 2) == [3, 4]
+    assert f.read(0x7100, 1) == [0xFF]
+
+
+def test_py32_flash_ignores_traffic_while_deselected(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.cs(False)
+    f.xfer(0x06)  # CS high: this is not a command
+    assert f.status() == 0
+
+
+def test_py32_flash_host_api(lib, py32):
+    cpu = py32(app_image())
+    data = (ctypes.c_uint8 * 3)(7, 8, 9)
+    lib.dp32g030_extflash_set(cpu, 0x010000, data, 3)
+    f = FlashLink(lib, cpu)
+    assert f.read(0x010000, 3) == [7, 8, 9]
+    out = (ctypes.c_uint8 * 3)()
+    f.program(0x010010, [0xAA, 0xBB, 0xCC])
+    lib.dp32g030_extflash_get(cpu, 0x010010, out, 3)
+    assert list(out) == [0xAA, 0xBB, 0xCC]
+
+
+def test_py32_flash_contents_survive_reset(lib, py32):
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x8000, [0x42])
+    lib.dp32g030_cpu_reset(cpu)
+    f2 = FlashLink(lib, cpu)
+    assert f2.read(0x8000, 1) == [0x42]
+
+
+def test_py32_flash_via_dma(lib, py32):
+    """The firmware's bulk read: command and address by byte, data by DMA."""
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.program(0x4000, list(range(32)))
+    f.cs(True)
+    for b in (0x03, 0x00, 0x40, 0x00):
+        f.xfer(b)
+    rxbuf, dummy = SRAM_BASE + 0x300, SRAM_BASE + 0x2F0
+    wr(lib, cpu, dummy, 0xFF, 1)
+    dma_setup(lib, cpu, 4, CCR_EN | CCR_MINC, 32, SPI2 + SPI_DR, rxbuf)  # RD
+    dma_setup(lib, cpu, 5, CCR_EN | CCR_DIR, 32, SPI2 + SPI_DR, dummy)  # WR
+    f.cs(False)
+    assert [rd(lib, cpu, rxbuf + i, 1)[1] for i in range(32)] == list(range(32))

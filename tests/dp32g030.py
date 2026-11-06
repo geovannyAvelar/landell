@@ -422,6 +422,12 @@ def load_lib(workdir):
         ctypes.c_size_t,
     ]
     lib.dp32g030_cpu_new_soc.restype = ctypes.POINTER(Cpu)
+    lib.dp32g030_extflash_set.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint8), ctypes.c_uint32,
+    ]
+    lib.dp32g030_extflash_get.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint8), ctypes.c_uint32,
+    ]
     lib.dp32g030_cpu_free.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_cpu_free.restype = None
     lib.dp32g030_gpio_set_input.argtypes = [

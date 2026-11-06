@@ -389,6 +389,20 @@ typedef struct {
   bool busy; /* guards against re-entry from DMA-initiated bus accesses */
 } dp32g030_py32_dma_t;
 
+#define DP32G030_EXTFLASH_SIZE (2 * 1024 * 1024) /* PY25Q16 */
+
+/* The board's external SPI NOR flash (see extflash.c). The contents are
+   allocated on demand and survive a reset. */
+typedef struct {
+  uint8_t *mem;
+  bool cs_low;   /* chip select level at the last GPIO write */
+  bool selected; /* a transaction is open (CS fell, not yet risen) */
+  bool wel;      /* write enable latch */
+  uint8_t cmd;
+  unsigned nbytes; /* bytes seen in this transaction, command included */
+  uint32_t addr;
+} dp32g030_extflash_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
@@ -425,9 +439,16 @@ typedef struct {
   uint32_t bus_fault_addr; /* address of the last failed bus access */
   bool bus_fault_write;    /* ... and whether it was a write */
   dp32g030_py32_t py32;
+  dp32g030_extflash_t extflash;
 } dp32g030_cpu_t;
 
 typedef struct dp32g030_soc dp32g030_soc_t;
+
+/* Host access to the board's external flash contents (clamped to its size). */
+void dp32g030_extflash_set(dp32g030_cpu_t *c, uint32_t offset,
+                           const uint8_t *data, uint32_t len);
+void dp32g030_extflash_get(const dp32g030_cpu_t *c, uint32_t offset,
+                           uint8_t *data, uint32_t len);
 
 /* Looks a chip up by name ("dp32g030"); NULL if unknown. */
 const dp32g030_soc_t *dp32g030_soc_by_name(const char *name);

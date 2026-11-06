@@ -74,6 +74,10 @@ bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
       uint8_t tx = (uint8_t)(val & mask);
       uint8_t rx = h->spi_xfer ? h->spi_xfer(h->user, n, tx) : 0;
 
+      if (c->soc->extflash.present && n == c->soc->extflash.spi &&
+          c->extflash.selected)
+        rx = dp32g030_extflash_xfer(c, tx); /* the flash answers while selected */
+
       if (n == c->soc->lcd.spi) {
         bool a0 = (c->soc->gpio_pins(c, c->soc->lcd.a0_port) &
                    (1u << c->soc->lcd.a0_pin)) != 0;
