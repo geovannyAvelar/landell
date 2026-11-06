@@ -341,7 +341,7 @@ void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
 }
 
 bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit) {
-  static const char keys[16] = "0123456789ABCD*#";
+  static const char keys[] = "0123456789ABCD*#";
   dp32g030_bk4819_t *b = &c->periph.bk4819;
   unsigned code;
 
