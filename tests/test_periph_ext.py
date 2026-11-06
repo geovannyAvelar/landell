@@ -100,13 +100,18 @@ def adc_setup(lib, cpu, wr, ch_mask=0x3):
 
 
 def test_adc_conversion_latches_inputs(lib, cpu, rd, wr):
+    # Each channel is an 8-byte pair: CHn_STAT (EOC flag) then CHn_DATA.
     adc_setup(lib, cpu, wr)
     assert rd(SARADC + 0xC) == 0
     wr(SARADC + 4, 1)
     assert rd(SARADC + 0xC) & (1 << 16)
-    assert rd(SARADC + 0x10) == 0x7B2
-    assert rd(SARADC + 0x14) == 0xFFF  # clipped to 12 bits
-    assert rd(SARADC + 0x18) == 0  # channel 2 not selected
+    assert rd(SARADC + 0xC) & 3  # CH0/CH1 per-channel EOC bits
+    assert rd(SARADC + 0x10) & 1  # CH0_STAT.EOC
+    assert rd(SARADC + 0x14) == (0 << 12) | 0x7B2  # CH0_DATA: CH_NUM | data
+    assert rd(SARADC + 0x18) & 1  # CH1_STAT.EOC
+    assert rd(SARADC + 0x1C) == (1 << 12) | 0xFFF  # CH1_DATA, clipped to 12 bits
+    assert not rd(SARADC + 0x20) & 1  # CH2 not selected
+    assert rd(SARADC + 0x24) == 2 << 12  # CH2_DATA: CH_NUM | 0
 
 
 def test_adc_needs_enable(lib, cpu, rd, wr):
@@ -121,8 +126,11 @@ def test_adc_flag_write_one_to_clear_and_reset(lib, cpu, rd, wr):
     wr(SARADC + 4, 1)
     wr(SARADC + 0xC, 1 << 16)
     assert not rd(SARADC + 0xC) & (1 << 16)
+    assert rd(SARADC + 0x10) & 1  # per-channel EOC is untouched by that clear
+    wr(SARADC + 0xC, 1)  # clear CH0's EOC specifically
+    assert not rd(SARADC + 0x10) & 1
     wr(SARADC + 4, 4)
-    assert rd(SARADC + 0x10) == 0
+    assert rd(SARADC + 0x14) == 0
 
 
 def test_adc_inputs_survive_reset(lib, cpu, rd, wr):
@@ -130,7 +138,7 @@ def test_adc_inputs_survive_reset(lib, cpu, rd, wr):
     lib.dp32g030_cpu_reset(cpu)
     wr(SARADC, (1 << 27) | 1)
     wr(SARADC + 4, 1)
-    assert rd(SARADC + 0x10) == 0x7B2
+    assert rd(SARADC + 0x14) == 0x7B2
 
 
 def crc_run(wr, rd, cr, iv, data, width_bits=8):

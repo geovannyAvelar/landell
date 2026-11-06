@@ -136,6 +136,7 @@ bool dp32g030_spi_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
 #define ADC_START_RESET (1u << 2)
 #define ADC_IF_FULL (1u << 16)
 #define ADC_IF_HFULL (1u << 17)
+#define ADC_IF_MASK 0x3FFFFu /* per-channel EOC (0-15) + FIFO full/half-full */
 
 void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value) {
   if (ch < DP32G030_ADC_CHANNELS)
@@ -146,8 +147,7 @@ static void adc_update_irq(dp32g030_cpu_t *c, const dp32g030_region_t *r) {
   const dp32g030_adc_t *a = &c->periph.adc;
 
   if (r->irq >= 0)
-    dp32g030_irq_set(c, (unsigned)r->irq,
-                     (a->ifl & a->ie & (ADC_IF_FULL | ADC_IF_HFULL)) != 0);
+    dp32g030_irq_set(c, (unsigned)r->irq, (a->ifl & a->ie & ADC_IF_MASK) != 0);
 }
 
 bool dp32g030_adc_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
@@ -156,8 +156,13 @@ bool dp32g030_adc_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
 
   if (size != 4)
     return false;
-  if (off >= 0x10 && off < 0x10 + 4 * DP32G030_ADC_CHANNELS) {
-    *out = a->result[(off - 0x10) / 4];
+  if (off >= 0x10 && off < 0x10 + 8 * DP32G030_ADC_CHANNELS) {
+    unsigned ch = (off - 0x10) / 8;
+
+    if ((off - 0x10) % 8 == 0)
+      *out = (a->ifl >> ch) & 1u; /* CHx_STAT.EOC mirrors ADC_IF bit x */
+    else
+      *out = ((uint32_t)ch << 12) | (a->result[ch] & 0xFFFu);
     return true;
   }
   switch (off) {
@@ -194,6 +199,8 @@ bool dp32g030_adc_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
 
   if (size != 4)
     return false;
+  if (off >= 0x10 && off < 0x10 + 8 * DP32G030_ADC_CHANNELS)
+    return true; /* CHx_STAT/CHx_DATA are read-only */
   switch (off) {
   case 0x00:
     a->cfg = val;
@@ -206,8 +213,10 @@ bool dp32g030_adc_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
     /* Conversions finish instantly; results come from the host inputs. */
     if ((val & ADC_START_START) && (a->cfg & ADC_CFG_EN)) {
       for (unsigned i = 0; i < DP32G030_ADC_CHANNELS; i++)
-        if (a->cfg & (1u << i))
+        if (a->cfg & (1u << i)) {
           a->result[i] = a->input[i];
+          a->ifl |= 1u << i; /* CHx_EOC */
+        }
       a->ifl |= ADC_IF_FULL | ADC_IF_HFULL;
     }
     break;

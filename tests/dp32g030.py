@@ -119,8 +119,8 @@ class Adc(ctypes.Structure):
         ("exttrig", ctypes.c_uint32),
         ("calib_offset", ctypes.c_uint32),
         ("calib_kd", ctypes.c_uint32),
-        ("input", ctypes.c_uint32 * 15),
-        ("result", ctypes.c_uint32 * 15),
+        ("input", ctypes.c_uint32 * 16),
+        ("result", ctypes.c_uint32 * 16),
     ]
 
 

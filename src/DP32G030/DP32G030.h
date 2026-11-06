@@ -141,7 +141,7 @@ typedef struct {
 } dp32g030_uart_t;
 
 #define DP32G030_SPI_FIFO_DEPTH 8
-#define DP32G030_ADC_CHANNELS 15
+#define DP32G030_ADC_CHANNELS 16
 
 typedef struct {
   uint32_t cr, ie, sticky;

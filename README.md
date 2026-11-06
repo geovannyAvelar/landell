@@ -16,7 +16,7 @@ Implemented:
 - GPIOA/B/C with host input and output hooks.
 - UART0-2 with an 8-byte RX FIFO, level and timeout interrupts, and a TX hook.
 - SPI0/1 master with RX FIFO, interrupts and a host transfer hook (used for the LCD and similar).
-- SARADC: a conversion copies host-set inputs into `CHn` and raises the FIFO flags.
+- SARADC: 16 channels. A conversion copies host-set inputs into each selected channel's `CHn_DATA`, and raises that channel's `CHn_STAT`/`ADC_IF` EOC bit (bit n) as well as the FIFO flags.
 - CRC: CCITT, CRC-8, CRC-16 and CRC-32 (checked against the standard test vectors; input/output reversal bits are a best guess).
 - TIMER_BASE0-2: two free-running 16-bit up-counters (HIGH/LOW) each with a load/compare value and interrupt.
 - TIMER_PLUS0-1: as TIMER_BASE, plus a count mode (counts edges on a host-driven pin) and an input-capture mode (latches the free-running count on a pin edge), and a HALL mode that decodes 3 host-driven sensor lines into edge interrupts.
