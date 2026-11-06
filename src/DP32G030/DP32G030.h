@@ -457,6 +457,8 @@ const dp32g030_soc_t *dp32g030_soc_by_name(const char *name);
    (or an image shorter than 8 bytes) "dp32g030". */
 const dp32g030_soc_t *dp32g030_soc_detect(const uint8_t *fw, size_t size);
 const char *dp32g030_soc_name(const dp32g030_soc_t *soc);
+/* One line on the image the chip expects, for error messages. */
+const char *dp32g030_soc_image_hint(const dp32g030_soc_t *soc);
 /* Presets that make the firmware of the chip's radio boot to its normal UI:
    a sane battery level on the ADC and, where the firmware keeps calibration in
    an external flash, a factory-style calibration block. Host-set values made
@@ -466,7 +468,7 @@ void dp32g030_soc_defaults(dp32g030_cpu_t *c);
    does not fit in the chip's flash, or is not an image for this chip. */
 dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
                                      const uint8_t *fw, size_t size);
-/* Same, with the chip chosen by dp32g030_soc_by_name's default (dp32g030). */
+/* Same, with the chip chosen by dp32g030_soc_detect. */
 dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size);
 uint8_t dp32g030_cpu_run(dp32g030_cpu_t **c, size_t size);
 void dp32g030_cpu_free(dp32g030_cpu_t *c);

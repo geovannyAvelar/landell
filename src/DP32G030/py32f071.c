@@ -202,14 +202,26 @@ static void py32_reset(dp32g030_cpu_t *c) {
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
 }
 
-/* The reset vector of an app image points into the chip's flash window. */
-bool py32_image_ok(const uint8_t *fw, size_t size) {
+static uint32_t py32_reset_vector(const uint8_t *fw) {
+  return (uint32_t)fw[4] | (uint32_t)fw[5] << 8 | (uint32_t)fw[6] << 16 |
+         (uint32_t)fw[7] << 24;
+}
+
+/* Chip detection: the reset vector points into the chip's flash window. */
+bool py32_looks_like_py32(const uint8_t *fw, size_t size) {
   if (size < 8)
     return false;
-  uint32_t reset = (uint32_t)fw[4] | (uint32_t)fw[5] << 8 |
-                   (uint32_t)fw[6] << 16 | (uint32_t)fw[7] << 24;
+  uint32_t reset = py32_reset_vector(fw);
 
   return reset >= 0x08000000u && reset < 0x08000000u + 128 * 1024;
+}
+
+/* A loadable image: the reset vector is inside the app area (a vector into the
+   bootloader's slot means a full dump or a bootloader image). */
+bool py32_image_ok(const uint8_t *fw, size_t size) {
+  if (!py32_looks_like_py32(fw, size))
+    return false;
+  return py32_reset_vector(fw) >= 0x08002800u;
 }
 
 /* UV-K5 V3 / UV-K1: the battery is on ADC channel 8, and the settings and
@@ -237,6 +249,7 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .has_vtor = true,
     .region_find = py32_region_find,
     .accepts_image = py32_image_ok,
+    .image_hint = "a raw app image with its vector table first, linked at 0x08002800",
     .defaults = py32_defaults,
     .reset = py32_reset,
     .lcd = {.spi = 1, .a0_port = 0, .a0_pin = 6},

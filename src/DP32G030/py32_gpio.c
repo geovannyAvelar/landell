@@ -57,8 +57,11 @@ static void py32_gpio_notify(dp32g030_cpu_t *c, unsigned port,
 void py32_gpio_reset(dp32g030_cpu_t *c) {
   for (unsigned i = 0; i < PY32_NGPIO; i++) {
     dp32g030_py32_gpio_t *g = &c->py32.gpio[i];
+    uint32_t in = g->in, driven = g->driven; /* the outside world stays */
 
     *g = (dp32g030_py32_gpio_t){0};
+    g->in = in;
+    g->driven = driven;
     g->moder = i == 0 ? PORT_A_MODER_RESET : MODER_ANALOG;
   }
 }

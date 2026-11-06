@@ -93,7 +93,7 @@ meson compile -C build
 | `dp32g030` | UV-K5 V1/V2 | raw binary, vector table first (flash at `0x0`) |
 | `py32f071` | UV-K5 V3, UV-K1 | raw *app* image (vector table first, linked at `0x08002800`, e.g. the F4HWN Fusion `.bin`) |
 
-`--soc auto` (the default) picks the chip from the image's reset vector: an address in `0x08000000..0x0801FFFF` selects `py32f071`, anything else `dp32g030`. `--soc dp32g030|py32f071` forces one, and an image that does not fit the chip is refused.
+`--soc auto` (the default) picks the chip from the image's reset vector: an address in `0x08000000..0x0801FFFF` selects `py32f071`, anything else `dp32g030`. `--soc dp32g030|py32f071` forces one. `py32f071` refuses an image whose reset vector is outside its app area (`0x08002800` up), such as a bootloader or a full flash dump; `dp32g030` accepts any image up to 64 KB, so forcing it on a PY32 image runs garbage. `landell` does not apply the board defaults below (use `--adc`); `landell-gui` does.
 
 PY32F071 notes: the Cortex-M0+ VTOR is modeled (the bootloader hand-off is emulated: the app boots with its vector table at `0x08002800`, clocks running). Peripherals behave only as far as the F4HWN Fusion firmware needs: GPIO, SPI (the LCD on SPI1, the external PY25Q16 flash on SPI2 with DMA), ADC, DMA, and the BK4819 on PF9/PB8/PB9. The firmware keeps its settings and calibration in that 2 MiB flash (empty at start); `landell-gui` presets a factory-style battery calibration (flash `0x010140`) and the battery ADC (channel 8) so the firmware boots to its normal screen. Not modeled yet: the V3/K1 key matrix (the panel is drawn but its keys do nothing on `py32f071`), USB, audio, the I2C devices, and anything the Fusion firmware does not touch on its way to the main screen.
 

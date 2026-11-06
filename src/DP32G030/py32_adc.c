@@ -43,7 +43,9 @@ static uint32_t *adc_reg(dp32g030_py32_adc_t *a, uint32_t off) {
 }
 
 static uint32_t adc_level(const dp32g030_py32_adc_t *a) {
-  return a->input[a->sqr[2] & 0x1Fu];
+  unsigned ch = a->sqr[2] & 0x1Fu;
+
+  return ch < PY32_ADC_CHANNELS ? a->input[ch] : 0; /* no such channel */
 }
 
 bool py32_adc_read(dp32g030_cpu_t *c, uint32_t off, unsigned size,

@@ -727,3 +727,50 @@ def test_py32_flash_via_dma(lib, py32):
     dma_setup(lib, cpu, 5, CCR_EN | CCR_DIR, 32, SPI2 + SPI_DR, dummy)  # WR
     f.cs(False)
     assert [rd(lib, cpu, rxbuf + i, 1)[1] for i in range(32)] == list(range(32))
+
+
+# ---- review fixes --------------------------------------------------------
+
+
+def test_py32_adc_channel_out_of_range_reads_zero(lib, py32):
+    cpu = py32(app_image())
+    for ch in range(20):
+        lib.dp32g030_adc_set_input(cpu, ch, 1234)
+    wr(lib, cpu, ADC1 + ADC_SQR3, 25)  # no such channel
+    wr(lib, cpu, ADC1 + ADC_CR2, CR2_ADON | CR2_SWSTART)
+    assert rd(lib, cpu, ADC1 + ADC_DR)[1] == 0
+
+
+def test_py32_dma_bus_error_sets_flags_and_disables_channel(lib, py32):
+    cpu = py32(app_image())
+    src = SRAM_BASE + 0x100
+    dma_setup(lib, cpu, 1, CCR_EN | CCR_TCIE | CCR_MEM2MEM | CCR_PINC | CCR_MINC,
+              4, src, 0x60000000)  # destination does not exist
+    isr = rd(lib, cpu, DMA1 + DMA_ISR)[1]
+    assert isr & (1 << 3)  # TEIF1
+    assert isr & 1  # GIF1
+    assert not isr & tcif(1)  # it did not complete
+    assert not rd(lib, cpu, ch(1, 0))[1] & CCR_EN
+    wr(lib, cpu, DMA1 + DMA_IFCR, 0xF)  # clear channel 1 flags
+    # an unrelated DMA register write must not retry the dead channel
+    wr(lib, cpu, ch(2, 4), 1)
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & 0xF == 0
+
+
+def test_py32_host_driven_inputs_survive_a_reset(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, GPIOA + MODER, 0)
+    lib.dp32g030_gpio_set_input(cpu, PORT_A, 1 << 5, 1 << 5)
+    assert rd(lib, cpu, GPIOA + IDR)[1] & (1 << 5)
+    lib.dp32g030_cpu_reset(cpu)  # the firmware reboots itself
+    wr(lib, cpu, GPIOA + MODER, 0)
+    assert rd(lib, cpu, GPIOA + IDR)[1] & (1 << 5)  # the outside world is still there
+
+
+def test_py32_rejects_bootloader_slot_images(lib):
+    soc = lib.dp32g030_soc_by_name(b"py32f071")
+    for reset in (0x08000109, 0x080027FF):  # below the app base
+        data = struct.pack("<II", SRAM_TOP, reset) + bytes(56)
+        assert not lib.dp32g030_cpu_new_soc(soc, emu.to_buf(data), len(data)), hex(reset)
+    ok = struct.pack("<II", SRAM_TOP, 0x08002801) + bytes(56)  # first app address
+    assert lib.dp32g030_cpu_new_soc(soc, emu.to_buf(ok), len(ok))

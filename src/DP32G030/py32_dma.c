@@ -41,6 +41,12 @@ static void dma_update_irq(dp32g030_cpu_t *c) {
   dp32g030_irq_set(c, 11, line[2]);
 }
 
+/* A bus error ends the transfer: GIF and TEIF set, the channel disabled. */
+static void dma_error(dp32g030_py32_dma_t *d, unsigned n) {
+  d->isr |= (1u << (4 * n)) | (1u << (4 * n + 3));
+  d->ccr[n] &= ~CCR_EN;
+}
+
 static void dma_finish(dp32g030_cpu_t *c, unsigned n) {
   dp32g030_py32_dma_t *d = &c->py32.dma;
 
@@ -55,7 +61,7 @@ static bool dma_unit_rx(dp32g030_cpu_t *c, unsigned n) {
 
   if (!dp32g030_bus_read(c, d->cur_p[n], psize(d->ccr[n]), &v) ||
       !dp32g030_bus_write(c, d->cur_m[n], msize(d->ccr[n]), v)) {
-    d->isr |= 1u << (4 * n + 3); /* TEIF */
+    dma_error(d, n);
     return false;
   }
   if (d->ccr[n] & CCR_PINC)
@@ -86,7 +92,7 @@ static void dma_run(dp32g030_cpu_t *c) {
 
         if (!dp32g030_bus_read(c, d->cur_m[n], msize(ccr), &v) ||
             !dp32g030_bus_write(c, d->cur_p[n], psize(ccr), v)) {
-          d->isr |= 1u << (4 * n + 3);
+          dma_error(d, n);
           break;
         }
         if (ccr & CCR_MINC)

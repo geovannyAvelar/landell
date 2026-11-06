@@ -189,8 +189,9 @@ int main(int argc, char **argv) {
   dp32g030_cpu_t *cpu = dp32g030_cpu_new_soc(soc, fw, size);
   free(fw);
   if (!cpu) {
-    fprintf(stderr, "%s: '%s' is not a valid image for %s (%zu bytes)\n", prog,
-            path, dp32g030_soc_name(soc), size);
+    fprintf(stderr, "%s: '%s' is not a valid image for %s (%zu bytes; expected %s)\n",
+            prog, path, dp32g030_soc_name(soc), size,
+            dp32g030_soc_image_hint(soc));
     return EXIT_USAGE;
   }
 

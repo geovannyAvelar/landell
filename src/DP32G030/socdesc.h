@@ -17,6 +17,8 @@ struct dp32g030_soc {
   const dp32g030_region_t *(*region_find)(uint32_t addr);
   /* Cheap check that an image belongs to this chip (NULL = anything goes). */
   bool (*accepts_image)(const uint8_t *fw, size_t size);
+  /* What image this chip loads, for error messages. */
+  const char *image_hint;
   /* Board presets, see dp32g030_soc_defaults. */
   void (*defaults)(dp32g030_cpu_t *c);
   /* Chip-specific power-on state, run at the end of dp32g030_cpu_reset. */

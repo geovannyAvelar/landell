@@ -207,3 +207,11 @@ def test_soc_auto_picks_py32f071_from_the_reset_vector(tmp_path):
     assert res.returncode == 0, res.stderr
     assert reg(res.stdout, "r0") == 1
     assert reg(res.stdout, "pc") == 0x0800280C  # just past the bkpt
+
+
+def test_soc_py32f071_error_says_which_image_it_wants(tmp_path):
+    path = tmp_path / "boot.bin"
+    path.write_bytes(struct.pack("<II", emu.SRAM_TOP, 0x08000109) + bytes(56))
+    res = landell("--soc", "py32f071", path)
+    assert res.returncode == 1
+    assert "0x08002800" in res.stderr  # raw app image linked there

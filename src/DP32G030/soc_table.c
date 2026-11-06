@@ -34,8 +34,12 @@ static const dp32g030_soc_t *const dp32g030_socs[] = {
 
 const char *dp32g030_soc_name(const dp32g030_soc_t *soc) { return soc->name; }
 
+const char *dp32g030_soc_image_hint(const dp32g030_soc_t *soc) {
+  return soc->image_hint ? soc->image_hint : "a raw binary with its vector table first";
+}
+
 const dp32g030_soc_t *dp32g030_soc_detect(const uint8_t *fw, size_t size) {
-  if (fw && size >= 8 && py32_image_ok(fw, size))
+  if (fw && size >= 8 && py32_looks_like_py32(fw, size))
     return &dp32g030_soc_py32f071;
   return &dp32g030_soc_dp32g030;
 }
