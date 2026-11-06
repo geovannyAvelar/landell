@@ -192,6 +192,47 @@ class PwmPlus(ctypes.Structure):
     ]
 
 
+class Rtc(ctypes.Structure):
+    _fields_ = [
+        ("cfg", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("pre", ctypes.c_uint32),
+        ("tr", ctypes.c_uint32),
+        ("dr", ctypes.c_uint32),
+        ("ar", ctypes.c_uint32),
+        ("sec", ctypes.c_uint8),
+        ("min", ctypes.c_uint8),
+        ("hour", ctypes.c_uint8),
+        ("weekday", ctypes.c_uint8),
+        ("date", ctypes.c_uint8),
+        ("month", ctypes.c_uint8),
+        ("year", ctypes.c_uint8),
+        ("cnt", ctypes.c_uint32),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
+class Iwdt(ctypes.Structure):
+    _fields_ = [
+        ("load", ctypes.c_uint32),
+        ("ctrl", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("cnt", ctypes.c_uint32),
+        ("expired_once", ctypes.c_bool),
+    ]
+
+
+class Wwdt(ctypes.Structure):
+    _fields_ = [
+        ("load", ctypes.c_uint32),
+        ("ctrl", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("value", ctypes.c_uint32),
+        ("presc", ctypes.c_uint32),
+    ]
+
+
 class Hooks(ctypes.Structure):
     _fields_ = [
         ("user", ctypes.c_void_p),
@@ -216,6 +257,9 @@ class Periph(ctypes.Structure):
         ("timer_plus", TimerPlus * 2),
         ("pwm_base", PwmBase * 2),
         ("pwm_plus", PwmPlus * 2),
+        ("rtc", Rtc),
+        ("iwdt", Iwdt),
+        ("wwdt", Wwdt),
         ("hooks", Hooks),
     ]
 

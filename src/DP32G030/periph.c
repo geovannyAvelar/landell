@@ -29,6 +29,14 @@ void dp32g030_periph_reset(dp32g030_cpu_t *c) {
     p->pwm_base[i].cnt = 0xFFFFu;
   for (unsigned i = 0; i < 2; i++)
     p->pwm_plus[i].period = 0xFFFFu;
+  p->rtc.pre = 0x7FFFu;
+  p->rtc.dr = 0x101u;
+  p->rtc.date = 1;
+  p->rtc.month = 1;
+  p->iwdt.load = 0xFFFFu;
+  p->iwdt.cnt = 0xFFFFu;
+  p->wwdt.load = 0x40u;
+  p->wwdt.value = 0x7Fu;
 }
 
 /* ---- generic register file ---------------------------------------- */

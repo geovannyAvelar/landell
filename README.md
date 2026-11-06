@@ -22,9 +22,12 @@ Implemented:
 - TIMER_PLUS0-1: as TIMER_BASE, plus a count mode (counts edges on a host-driven pin) and an input-capture mode (latches the free-running count on a pin edge), and a HALL mode that decodes 3 host-driven sensor lines into edge interrupts.
 - PWM_BASE0-1: a 16-bit up-counter wrapping at a configurable period, with 3 channels compared against flip points and overflow/compare interrupts.
 - PWM_PLUS0-1: as PWM_BASE, plus complementary (CHn/CHnN) outputs, up/down/center-aligned counting, single-shot or looping, host-driven brake inputs, and output masking.
-- SYSCON, PMU, PORTCON, flash control, I2C, DMA, RTC, watchdogs and AES as plain read/write register files (no behaviour yet).
+- RTC: a BCD calendar clock (time, date and weekday), with per-unit (seconds/minutes/hours/day) and half-second interrupts, and a one-shot or recurring alarm.
+- IWDT: a 20-bit down-counter watchdog. Expiring once raises an interrupt and reloads; expiring again unfed resets the core.
+- WWDT: a windowed 7-bit down-counter watchdog. Feeding outside its window, or the count reaching the reset threshold, resets the core; the window and pre-reset thresholds each raise their own interrupt.
+- SYSCON, PMU, PORTCON, flash control, I2C and AES as plain read/write register files (no behaviour yet).
 
-Not yet implemented: behaviour for the register-file blocks above, clock gating, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps; the register layout for TIMER_BASE/PLUS and PWM_BASE/PLUS above comes from the `dp32g030` Rust SVD (itself derived from the UV-K5 firmware's register definitions), not from this project's own headers.
+Not yet implemented: behaviour for the register-file blocks above, clock gating, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps; the register layout for TIMER_BASE/PLUS, PWM_BASE/PLUS, RTC, IWDT and WWDT above comes from the `dp32g030` Rust SVD (itself derived from the UV-K5 firmware's register definitions), not from this project's own headers.
 
 TIMER_BASE/PLUS and PWM_BASE/PLUS model limits:
 
@@ -33,6 +36,13 @@ TIMER_BASE/PLUS and PWM_BASE/PLUS model limits:
 - PWM_PLUS dead-time (`CHn_DT`) and brake digital filtering (`BRAKE_FILTER`) are stored but have no timing effect: channel outputs switch instantly and brake overrides apply as soon as the line is asserted.
 - PWM_PLUS's internal trigger point (`TRIG_COMP`/`TRIG_CFG`) only raises its own interrupt flags; nothing else in the emulator consumes it (e.g. to trigger an SARADC conversion).
 - TIMER_PLUS's DMA-read-of-capture-value bits are stored but have no effect (the DMA peripheral itself has no behaviour yet).
+
+RTC/IWDT/WWDT model limits:
+
+- RTC's "1 second" is `RTC_PRE`'s `PRE_ROUND + 1` core clocks; the real chip runs it off a separate slow oscillator, and the `PRE_DECIMAL`/`PRE_PERIOD` fractional adjustment is not modeled.
+- RTC's leap-year rule is a plain `year % 4` (the 2-digit BCD year has no century to apply the usual exceptions to).
+- RTC_VALID.CUR_VALID simply follows RTC_EN; the real chip's exact validity conditions after enabling or loading are unclear from the register description alone.
+- IWDT's 20-bit `IWDT_LOAD` count is modeled as core clocks, not the separate watchdog oscillator the real chip likely uses.
 
 Model limits:
 

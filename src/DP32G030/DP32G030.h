@@ -211,6 +211,32 @@ typedef struct {
   uint32_t presc;
 } dp32g030_pwm_plus_t;
 
+/* RTC: a BCD calendar clock. The prescaler's "1 second" is modeled as
+   PRE_ROUND+1 core clocks (the real chip runs it off a separate slow
+   oscillator); the PRE_DECIMAL/PRE_PERIOD fractional adjustment is not
+   modeled (see README). */
+typedef struct {
+  uint32_t cfg, ie, iflags, pre, tr, dr, ar;
+  uint8_t sec, min, hour, weekday, date, month, year; /* current time */
+  uint32_t cnt;   /* RTC_CNT: seconds elapsed since the last load */
+  uint32_t presc; /* core clocks into the current second */
+} dp32g030_rtc_t;
+
+/* IWDT: a 20-bit down-counter. The first time it reaches 0 it raises an
+   interrupt and reloads; if not fed before it reaches 0 again, it resets
+   the core. Modeled as 1 LOAD tick per core clock (see README). */
+typedef struct {
+  uint32_t load, ctrl, iflags, cnt;
+  bool expired_once;
+} dp32g030_iwdt_t;
+
+/* WWDT: a 7-bit down-counter with a reset threshold (RST_LOAD) and a
+   window interrupt threshold (INT_LOAD) above it. Feeding outside the
+   window, or the count reaching RST_LOAD, resets the core. */
+typedef struct {
+  uint32_t load, ctrl, iflags, value, presc;
+} dp32g030_wwdt_t;
+
 /* Host callbacks. Any may be NULL. */
 typedef struct {
   void *user;
@@ -232,6 +258,9 @@ typedef struct {
   dp32g030_timer_plus_t timer_plus[2];
   dp32g030_pwm_base_t pwm_base[2];
   dp32g030_pwm_plus_t pwm_plus[2];
+  dp32g030_rtc_t rtc;
+  dp32g030_iwdt_t iwdt;
+  dp32g030_wwdt_t wwdt;
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 

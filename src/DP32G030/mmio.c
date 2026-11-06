@@ -24,6 +24,12 @@
   REGION_RW(n, b, clk, irq_n, dp32g030_pwm_base_read, dp32g030_pwm_base_write)
 #define PWM_PLUS_REGION(n, b, clk, irq_n) \
   REGION_RW(n, b, clk, irq_n, dp32g030_pwm_plus_read, dp32g030_pwm_plus_write)
+#define RTC_REGION(n, b, clk, irq_n) \
+  REGION_RW(n, b, clk, irq_n, dp32g030_rtc_read, dp32g030_rtc_write)
+#define IWDT_REGION(n, b, clk, irq_n) \
+  REGION_RW(n, b, clk, irq_n, dp32g030_iwdt_read, dp32g030_iwdt_write)
+#define WWDT_REGION(n, b, clk, irq_n) \
+  REGION_RW(n, b, clk, irq_n, dp32g030_wwdt_read, dp32g030_wwdt_write)
 
 static const dp32g030_region_t dp32g030_regions[] = {
     REGION(SYSCON, 0x40000000u, -1, -1),
@@ -38,9 +44,9 @@ static const dp32g030_region_t dp32g030_regions[] = {
     TIMER_BASE_REGION(TIMER_BASE2, 0x40065000u, 14, 21),
     TIMER_PLUS_REGION(TIMER_PLUS0, 0x40067000u, 15, 7),
     TIMER_PLUS_REGION(TIMER_PLUS1, 0x40067800u, 16, 8),
-    REGION(RTC, 0x40069000u, 22, 2),
-    REGION(IWDT, 0x4006A000u, 23, 1),
-    REGION(WWDT, 0x4006A800u, 24, 0),
+    RTC_REGION(RTC, 0x40069000u, 22, 2),
+    IWDT_REGION(IWDT, 0x4006A000u, 23, 1),
+    WWDT_REGION(WWDT, 0x4006A800u, 24, 0),
     UART_REGION(UART0, 0x4006B000u, 6, 13),
     UART_REGION(UART1, 0x4006B800u, 7, 14),
     UART_REGION(UART2, 0x4006C000u, 8, 15),

@@ -37,6 +37,9 @@ DP32G030_DECL_RW(timer_base);
 DP32G030_DECL_RW(timer_plus);
 DP32G030_DECL_RW(pwm_base);
 DP32G030_DECL_RW(pwm_plus);
+DP32G030_DECL_RW(rtc);
+DP32G030_DECL_RW(iwdt);
+DP32G030_DECL_RW(wwdt);
 
 /* Advance all TIMER_BASE/TIMER_PLUS/PWM_BASE/PWM_PLUS units by `cycles`
    core clocks (called from dp32g030_soc_tick). */
@@ -48,6 +51,10 @@ void dp32g030_timer_plus_tick(dp32g030_cpu_t *c, uint64_t cycles);
 uint64_t dp32g030_timer_plus_next_event(const dp32g030_cpu_t *c);
 void dp32g030_pwm_plus_tick(dp32g030_cpu_t *c, uint64_t cycles);
 uint64_t dp32g030_pwm_plus_next_event(const dp32g030_cpu_t *c);
+
+/* RTC/IWDT/WWDT (rtc_wdt.c). */
+void dp32g030_rtc_wdt_tick(dp32g030_cpu_t *c, uint64_t cycles);
+uint64_t dp32g030_rtc_wdt_next_event(const dp32g030_cpu_t *c);
 
 /* Shared prescaler helper (defined in timer_pwm.c): run a shared-divider
    up-counter block forward by `cycles` core clocks, firing `tick_one` once
