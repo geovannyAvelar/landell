@@ -38,8 +38,11 @@ void dp32g030_cpu_reset(dp32g030_cpu_t *c) {
   c->msp = c->r[13];
   c->psp = 0;
   c->scs.irq_lines = 0;
+  c->vtor = c->soc->has_vtor ? c->soc->image_base : 0;
   dp32g030_scs_reset(c);
   dp32g030_periph_reset(c);
+  if (c->soc->reset)
+    c->soc->reset(c);
 }
 
 dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,

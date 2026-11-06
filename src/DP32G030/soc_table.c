@@ -15,6 +15,7 @@ const dp32g030_soc_t dp32g030_soc_dp32g030 = {
 
 static const dp32g030_soc_t *const dp32g030_socs[] = {
     &dp32g030_soc_dp32g030,
+    &dp32g030_soc_py32f071,
 };
 
 const dp32g030_soc_t *dp32g030_soc_by_name(const char *name) {

@@ -153,7 +153,7 @@ void dp32g030_hard_fault(dp32g030_cpu_t *c) {
   }
   /* Stack the address of the faulting instruction. */
   c->r[15] = c->insn_pc;
-  if (!dp32g030_bus_read(c, 4u * DP32G030_EXC_HARDFAULT, 4, &vec) ||
+  if (!dp32g030_bus_read(c, c->vtor + 4u * DP32G030_EXC_HARDFAULT, 4, &vec) ||
       !(vec & 1u)) {
     dp32g030_lockup(c);
     return;
@@ -168,7 +168,7 @@ void dp32g030_exc_enter(dp32g030_cpu_t *c, unsigned exc) {
   uint32_t excret;
   uint32_t frame[8];
 
-  if (!dp32g030_bus_read(c, 4u * exc, 4, &vec) || !(vec & 1u)) {
+  if (!dp32g030_bus_read(c, c->vtor + 4u * exc, 4, &vec) || !(vec & 1u)) {
     dp32g030_lockup(c);
     return;
   }

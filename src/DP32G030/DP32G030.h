@@ -353,6 +353,15 @@ typedef struct {
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 
+#define PY32_NREGIONS 40
+#define PY32_REGION_SIZE 0x400u
+#define PY32_REGFILE_WORDS (PY32_REGION_SIZE / 4)
+
+/* PY32F071 peripheral state (see py32f071.c). */
+typedef struct {
+  uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
+} dp32g030_py32_t;
+
 typedef struct {
   uint32_t r[16];
   uint32_t insn_pc;
@@ -375,6 +384,9 @@ typedef struct {
   const struct dp32g030_soc *soc; /* chip this cpu models */
   dp32g030_scs_t scs;
   dp32g030_periph_t periph;
+  /* Fields below are not mirrored by the Python test harness. */
+  uint32_t vtor;      /* vector table offset (chips with a VTOR only) */
+  dp32g030_py32_t py32;
 } dp32g030_cpu_t;
 
 typedef struct dp32g030_soc dp32g030_soc_t;

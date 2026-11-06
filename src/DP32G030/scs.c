@@ -2,8 +2,10 @@
 
 #include "exc.h"
 #include "mmio.h"
+#include "socdesc.h"
 
 #define CPUID_CORTEX_M0 0x410CC200u
+#define CPUID_CORTEX_M0_PLUS 0x410CC601u
 #define AIRCR_VECTKEY 0x05FA0000u
 
 #define ST_ENABLE (1u << 0)
@@ -94,7 +96,10 @@ static bool dp32g030_scs_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
     v = (uint32_t)(s->pending >> 16);
     break;
   case 0xD00:
-    v = CPUID_CORTEX_M0;
+    v = c->soc->has_vtor ? CPUID_CORTEX_M0_PLUS : CPUID_CORTEX_M0;
+    break;
+  case 0xD08:
+    v = c->soc->has_vtor ? c->vtor : 0;
     break;
   case 0xD04:
     v = (c->xpsr & 0x1FFu) | (dp32g030_exc_vectpending(c) << 12);
@@ -178,6 +183,10 @@ static bool dp32g030_scs_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
       dp32g030_exc_pend(c, DP32G030_EXC_SYSTICK);
     if (v & (1u << 25))
       s->pending &= ~(1ull << DP32G030_EXC_SYSTICK);
+    break;
+  case 0xD08:
+    if (c->soc->has_vtor)
+      c->vtor = v & 0xFFFFFF80u;
     break;
   case 0xD0C:
     if ((v & 0xFFFF0000u) == AIRCR_VECTKEY && (v & 4u))
