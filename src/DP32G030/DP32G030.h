@@ -389,23 +389,6 @@ typedef struct {
   bool busy; /* guards against re-entry from DMA-initiated bus accesses */
 } dp32g030_py32_dma_t;
 
-#define DP32G030_EEPROM_SIZE 8192 /* 24C64 */
-
-/* The board's I2C EEPROM (24C64 at address 0xA0) and the state of its
-   bit-banged bus decoder (see i2c_eeprom.c). Contents survive a reset. */
-typedef struct {
-  uint8_t mem[DP32G030_EEPROM_SIZE];
-  bool prev_scl, prev_sda; /* bus levels seen at the last event */
-  bool slave_low;          /* the EEPROM is pulling SDA low */
-  bool master_ack;         /* while sending: the master acknowledged */
-  uint8_t state;
-  uint8_t bitcount;
-  uint8_t shift;
-  uint8_t out;
-  uint16_t ptr;
-  bool reading;
-} dp32g030_eeprom_t;
-
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
@@ -442,16 +425,9 @@ typedef struct {
   uint32_t bus_fault_addr; /* address of the last failed bus access */
   bool bus_fault_write;    /* ... and whether it was a write */
   dp32g030_py32_t py32;
-  dp32g030_eeprom_t eeprom;
 } dp32g030_cpu_t;
 
 typedef struct dp32g030_soc dp32g030_soc_t;
-
-/* Host access to the board's EEPROM contents (clamped to its size). */
-void dp32g030_eeprom_set(dp32g030_cpu_t *c, uint32_t offset, const uint8_t *data,
-                         uint32_t len);
-void dp32g030_eeprom_get(const dp32g030_cpu_t *c, uint32_t offset, uint8_t *data,
-                         uint32_t len);
 
 /* Looks a chip up by name ("dp32g030"); NULL if unknown. */
 const dp32g030_soc_t *dp32g030_soc_by_name(const char *name);
