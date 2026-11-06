@@ -23,12 +23,31 @@ static void uart_tx(void *user, unsigned uart, uint8_t byte) {
     putchar(byte);
 }
 
+static void lcd_render(const dp32g030_cpu_t *c) {
+  static const char *const glyph[4] = {" ", "\xe2\x96\x80", "\xe2\x96\x84",
+                                       "\xe2\x96\x88"};
+
+  printf("lcd: %s\n", dp32g030_lcd_is_on(c) ? "on" : "off");
+  for (unsigned y = 0; y < 64; y += 2) {
+    for (unsigned x = 0; x < 128; x++) {
+      unsigned top = dp32g030_lcd_get_pixel(c, x, y);
+      unsigned bottom = dp32g030_lcd_get_pixel(c, x, y + 1);
+
+      fputs(glyph[top | (bottom << 1)], stdout);
+    }
+    putchar('\n');
+  }
+}
+
 static void usage(FILE *out, const char *prog) {
   fprintf(out,
-          "usage: %s [-s steps] [-u uart] firmware.bin\n"
+          "usage: %s [-s steps] [-u uart] [-a ch=val] [-l] firmware.bin\n"
           "\n"
           "  -s, --steps N  maximum instructions to execute (default %llu)\n"
           "  -u, --uart N   print bytes sent by UART N (0-2) to stdout\n"
+          "  -a, --adc CH=V set SARADC channel CH (0-15) to 12-bit value V; "
+          "repeatable\n"
+          "  -l, --lcd      print the LCD contents after the run\n"
           "  -h, --help     show this help\n"
           "\n"
           "exit status: 0 ok, 1 usage or I/O error, 2 bus fault, 3 undefined "
@@ -67,6 +86,8 @@ int main(int argc, char **argv) {
   const char *prog = argv[0];
   const char *path = NULL;
   size_t steps = (size_t)DEFAULT_STEPS;
+  bool show_lcd = false;
+  unsigned adc_ch[16], adc_val[16], adc_n = 0;
 
   for (int i = 1; i < argc; i++) {
     const char *arg = argv[i];
@@ -80,6 +101,32 @@ int main(int argc, char **argv) {
         fprintf(stderr, "%s: invalid value for --steps\n", prog);
         return EXIT_USAGE;
       }
+      continue;
+    }
+    if (!strcmp(arg, "-a") || !strcmp(arg, "--adc")) {
+      char *end;
+      unsigned long ch, val;
+
+      if (++i >= argc || adc_n >= 16) {
+        fprintf(stderr, "%s: invalid value for --adc\n", prog);
+        return EXIT_USAGE;
+      }
+      ch = strtoul(argv[i], &end, 0);
+      if (end == argv[i] || *end != '=' || ch > 15) {
+        fprintf(stderr, "%s: invalid value for --adc\n", prog);
+        return EXIT_USAGE;
+      }
+      val = strtoul(end + 1, &end, 0);
+      if (*end != '\0' || val > 0xFFF) {
+        fprintf(stderr, "%s: invalid value for --adc\n", prog);
+        return EXIT_USAGE;
+      }
+      adc_ch[adc_n] = (unsigned)ch;
+      adc_val[adc_n++] = (unsigned)val;
+      continue;
+    }
+    if (!strcmp(arg, "-l") || !strcmp(arg, "--lcd")) {
+      show_lcd = true;
       continue;
     }
     if (!strcmp(arg, "-u") || !strcmp(arg, "--uart")) {
@@ -125,6 +172,8 @@ int main(int argc, char **argv) {
   }
 
   cpu->periph.hooks.uart_tx = uart_tx;
+  for (unsigned k = 0; k < adc_n; k++)
+    dp32g030_adc_set_input(cpu, adc_ch[k], adc_val[k]);
   uint8_t status = dp32g030_cpu_run(&cpu, steps);
   if (uart_echo >= 0)
     fflush(stdout);
@@ -148,6 +197,8 @@ int main(int argc, char **argv) {
     break;
   }
   dump(cpu);
+  if (show_lcd)
+    lcd_render(cpu);
 
   dp32g030_cpu_free(cpu);
   return code;
