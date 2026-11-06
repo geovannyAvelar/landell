@@ -55,4 +55,15 @@ with tempfile.TemporaryDirectory() as d:
     data = png.read_bytes()
     check(data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG")
     w, h = struct.unpack(">II", data[16:24])
-    check((w, h) == (256, 128), f"size {(w, h)}")
+    check((w, h) == (256, (64 + 72) * 2), f"size {(w, h)}")
+
+    r = run("--press", "bogus", "--screenshot", str(png), str(fw))
+    check(r.returncode == 1 and "press" in r.stderr, f"--press bogus: {r}")
+
+    plain = Path(d) / "plain.png"
+    pressed = Path(d) / "pressed.png"
+    a = run("--screenshot", str(plain), "--steps", "1000", "--scale", "2", str(fw))
+    b = run("--screenshot", str(pressed), "--steps", "1000", "--scale", "2",
+            "--press", "menu,ptt", str(fw))
+    check(a.returncode == 0 and b.returncode == 0, f"press runs: {a} {b}")
+    check(plain.read_bytes() != pressed.read_bytes(), "--press changes the picture")

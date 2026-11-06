@@ -1,5 +1,7 @@
+#include "keypad.h"
 #include "lcd_view.h"
 #include "pacer.h"
+#include "panel.h"
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
@@ -16,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 
 extern "C" {
@@ -49,23 +52,35 @@ struct Options {
   size_t steps = kDefaultScreenshotSteps;
   AdcInput adc[16];
   unsigned adc_n = 0;
+  Key press[int(Key::Count)];
+  unsigned press_n = 0;
 };
 
-struct LcdState {
-  bool dirty = true;
+// Shared with the core through hooks.user.
+struct Ui {
+  bool dirty = true; // LCD or panel needs redrawing
+  Keypad *keypad = nullptr;
 };
 
-void lcd_updated(void *user) { static_cast<LcdState *>(user)->dirty = true; }
+void lcd_updated(void *user) { static_cast<Ui *>(user)->dirty = true; }
+
+void gpio_changed(void *user, unsigned port, uint32_t, uint32_t) {
+  Ui *ui = static_cast<Ui *>(user);
+  if (ui->keypad)
+    ui->keypad->on_gpio_change(port);
+}
 
 void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
-      "usage: %s [--scale N] [-a|--adc CH=VAL] [--screenshot out.png "
+      "usage: %s [--scale N] [-a|--adc CH=VAL] [--press KEYS] [--screenshot out.png "
       "[--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
       "  -a, --adc CH=VAL   set SARADC channel CH (0-15) to 12-bit VAL; "
       "repeatable\n"
+      "  --press KEY[,KEY]  hold keys from the start (0-9 menu up down exit "
+      "star f ptt side1 side2)\n"
       "  --screenshot FILE  run headless, write one frame as PNG and exit\n"
       "  --steps N          instructions to run before the screenshot\n"
       "  -h, --help         show this help\n",
@@ -115,6 +130,30 @@ int parse_args(int argc, char **argv, Options *o) {
       o->steps = size_t(v);
       continue;
     }
+    if (!std::strcmp(arg, "--press")) {
+      if (++i >= argc) {
+        std::fprintf(stderr, "%s: --press needs a key list\n", prog);
+        return EXIT_USAGE;
+      }
+      std::string list = argv[i];
+      size_t pos = 0;
+      while (pos <= list.size()) {
+        size_t comma = list.find(',', pos);
+        std::string name = list.substr(
+            pos, comma == std::string::npos ? std::string::npos : comma - pos);
+        Key k;
+        if (!key_from_name(name.c_str(), &k) || o->press_n >= unsigned(Key::Count)) {
+          std::fprintf(stderr, "%s: invalid key '%s' for --press\n", prog,
+                       name.c_str());
+          return EXIT_USAGE;
+        }
+        o->press[o->press_n++] = k;
+        if (comma == std::string::npos)
+          break;
+        pos = comma + 1;
+      }
+      continue;
+    }
     if (!std::strcmp(arg, "--screenshot")) {
       if (++i >= argc) {
         std::fprintf(stderr, "%s: --screenshot needs a file\n", prog);
@@ -161,7 +200,7 @@ struct Canvas {
 
   explicit Canvas(int scale) {
     SkImageInfo info =
-        SkImageInfo::Make(kLcdWidth * scale, kLcdHeight * scale,
+        SkImageInfo::Make(kLcdWidth * scale, (kLcdHeight + kPanelUnits) * scale,
                           kBGRA_8888_SkColorType, kPremul_SkAlphaType);
     bitmap.allocPixels(info);
     surface = SkSurfaces::WrapPixels(info, bitmap.getPixels(), bitmap.rowBytes());
@@ -179,11 +218,12 @@ int status_exit_code(uint8_t status) {
   }
 }
 
-int run_screenshot(dp32g030_cpu_t **cpup, const Options &o) {
+int run_screenshot(dp32g030_cpu_t **cpup, const Options &o, const Keypad &keypad) {
   uint8_t status = dp32g030_cpu_run(cpup, o.steps);
   dp32g030_cpu_t *cpu = *cpup;
   Canvas canvas(o.scale);
   lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale);
+  panel_draw(canvas.surface->getCanvas(), o.scale, keypad);
 
   SkPixmap pixmap;
   if (!canvas.bitmap.peekPixels(&pixmap)) {
@@ -199,7 +239,98 @@ int run_screenshot(dp32g030_cpu_t **cpup, const Options &o) {
   return status_exit_code(status);
 }
 
-int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
+// PC keyboard to UV-K5 key. Shift+8 / Shift+3 give * and # on US layouts, where
+// SDL reports the unshifted keycode.
+bool key_for_sym(SDL_Keycode sym, Uint16 mod, Key *out) {
+  if (sym >= SDLK_0 && sym <= SDLK_9) {
+    bool shift = (mod & KMOD_SHIFT) != 0;
+    if (shift && sym == SDLK_8)
+      *out = Key::Star;
+    else if (shift && sym == SDLK_3)
+      *out = Key::F;
+    else
+      *out = Key(int(Key::K0) + int(sym - SDLK_0));
+    return true;
+  }
+  if (sym >= SDLK_KP_1 && sym <= SDLK_KP_9) {
+    *out = Key(int(Key::K1) + int(sym - SDLK_KP_1));
+    return true;
+  }
+  switch (sym) {
+  case SDLK_KP_0: *out = Key::K0; return true;
+  case SDLK_RETURN:
+  case SDLK_KP_ENTER: *out = Key::Menu; return true;
+  case SDLK_UP: *out = Key::Up; return true;
+  case SDLK_DOWN: *out = Key::Down; return true;
+  case SDLK_BACKSPACE: *out = Key::Exit; return true;
+  case SDLK_ASTERISK:
+  case SDLK_KP_MULTIPLY: *out = Key::Star; return true;
+  case SDLK_HASH:
+  case SDLK_f: *out = Key::F; return true;
+  case SDLK_SPACE: *out = Key::Ptt; return true;
+  case SDLK_F1: *out = Key::Side1; return true;
+  case SDLK_F2: *out = Key::Side2; return true;
+  default: return false;
+  }
+}
+
+// Which input holds each key: the keyboard (by SDL keycode) and the mouse.
+struct Held {
+  Keypad *pad;
+  Ui *ui;
+  std::map<SDL_Keycode, Key> keys;
+  bool mouse_down = false;
+  Key mouse_key = Key::K0;
+
+  bool held(Key k) const {
+    if (mouse_down && mouse_key == k)
+      return true;
+    for (const auto &e : keys)
+      if (e.second == k)
+        return true;
+    return false;
+  }
+  void sync(Key k) {
+    bool want = held(k);
+    if (pad->pressed(k) != want) {
+      pad->set(k, want);
+      ui->dirty = true;
+    }
+  }
+  void key_down(SDL_Keycode sym, Key k) {
+    keys[sym] = k;
+    sync(k);
+  }
+  void key_up(SDL_Keycode sym) {
+    auto it = keys.find(sym);
+    if (it == keys.end())
+      return;
+    Key k = it->second;
+    keys.erase(it);
+    sync(k);
+  }
+  void mouse_press(Key k) {
+    mouse_release();
+    mouse_down = true;
+    mouse_key = k;
+    sync(k);
+  }
+  void mouse_release() {
+    if (!mouse_down)
+      return;
+    mouse_down = false;
+    sync(mouse_key);
+  }
+  void release_all() {
+    std::map<SDL_Keycode, Key> old;
+    old.swap(keys);
+    for (const auto &e : old)
+      sync(e.second);
+    mouse_release();
+  }
+};
+
+int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   dp32g030_cpu_t *cpu = *cpup;
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -207,13 +338,14 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
   }
   SDL_Window *window = SDL_CreateWindow(
       "landell", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      kLcdWidth * o.scale, kLcdHeight * o.scale, 0);
+      kLcdWidth * o.scale, (kLcdHeight + kPanelUnits) * o.scale, 0);
   SDL_Renderer *renderer =
       window ? SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED) : nullptr;
   SDL_Texture *texture =
       renderer ? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGRA32,
                                    SDL_TEXTUREACCESS_STREAMING,
-                                   kLcdWidth * o.scale, kLcdHeight * o.scale)
+                                   kLcdWidth * o.scale,
+                                   (kLcdHeight + kPanelUnits) * o.scale)
                : nullptr;
   if (!texture) {
     std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
@@ -226,6 +358,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
   }
 
   Canvas canvas(o.scale);
+  Held held{pad, ui, {}, false, Key::K0};
   Pacer pacer;
   bool stopped = false;
   unsigned capped_frames = 0;
@@ -241,10 +374,32 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
           (ev.window.event == SDL_WINDOWEVENT_EXPOSED ||
            ev.window.event == SDL_WINDOWEVENT_RESTORED ||
            ev.window.event == SDL_WINDOWEVENT_SHOWN))
-        lcd->dirty = true; // back buffer is undefined after a present
+        ui->dirty = true; // back buffer is undefined after a present
+      if (ev.type == SDL_WINDOWEVENT &&
+          ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+        held.release_all();
       if (ev.type == SDL_QUIT ||
           (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE))
         quit = true;
+      if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
+        Key k;
+        if (key_for_sym(ev.key.keysym.sym, ev.key.keysym.mod, &k))
+          held.key_down(ev.key.keysym.sym, k);
+      }
+      if (ev.type == SDL_KEYUP)
+        held.key_up(ev.key.keysym.sym);
+      if (ev.type == SDL_MOUSEBUTTONDOWN && ev.button.button == SDL_BUTTON_LEFT) {
+        auto hit = panel_hit(float(ev.button.x), float(ev.button.y), o.scale);
+        if (hit)
+          held.mouse_press(*hit);
+      }
+      if (ev.type == SDL_MOUSEBUTTONUP && ev.button.button == SDL_BUTTON_LEFT)
+        held.mouse_release();
+      if (ev.type == SDL_MOUSEMOTION && held.mouse_down) {
+        auto hit = panel_hit(float(ev.motion.x), float(ev.motion.y), o.scale);
+        if (!hit || *hit != held.mouse_key)
+          held.mouse_release();
+      }
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -256,6 +411,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
       uint64_t before = cpu->cycles;
       uint8_t status = dp32g030_cpu_run(cpup, steps);
       cpu = *cpup;
+      pad->set_cpu(cpu);
       last_steps = steps;
       last_cycles = before;
 
@@ -271,7 +427,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
         else
           std::snprintf(title, sizeof title, "landell - halted");
         SDL_SetWindowTitle(window, title);
-        lcd->dirty = true;
+        ui->dirty = true;
       }
 
       capped_frames = pacer.capped() ? capped_frames + 1 : 0;
@@ -281,9 +437,10 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, LcdState *lcd) {
       }
     }
 
-    if (lcd->dirty) {
-      lcd->dirty = false;
+    if (ui->dirty) {
+      ui->dirty = false;
       lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale);
+      panel_draw(canvas.surface->getCanvas(), o.scale, *pad);
       SDL_UpdateTexture(texture, nullptr, canvas.bitmap.getPixels(),
                         int(canvas.bitmap.rowBytes()));
       SDL_RenderClear(renderer);
@@ -322,16 +479,22 @@ int main(int argc, char **argv) {
     return EXIT_USAGE;
   }
 
-  LcdState lcd;
-  cpu->periph.hooks.user = &lcd;
+  Ui ui;
+  Keypad keypad(cpu);
+  ui.keypad = &keypad;
+  cpu->periph.hooks.user = &ui;
   cpu->periph.hooks.lcd_update = lcd_updated;
+  cpu->periph.hooks.gpio_change = gpio_changed;
+  keypad.refresh();
+  for (unsigned i = 0; i < opts.press_n; i++)
+    keypad.set(opts.press[i], true);
 
   dp32g030_adc_set_input(cpu, kBatteryAdcChannel, kBatteryAdcValue);
   for (unsigned i = 0; i < opts.adc_n; i++)
     dp32g030_adc_set_input(cpu, opts.adc[i].ch, opts.adc[i].val);
 
-  int code = opts.screenshot ? run_screenshot(&cpu, opts)
-                             : run_window(&cpu, opts, &lcd);
+  int code = opts.screenshot ? run_screenshot(&cpu, opts, keypad)
+                             : run_window(&cpu, opts, &ui, &keypad);
   dp32g030_cpu_free(cpu);
   return code;
 }

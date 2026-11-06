@@ -126,7 +126,7 @@ firmware/                example firmware
 
 ## GUI
 
-`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Display only: no keys, EEPROM or audio yet.
+`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Below the LCD it draws the radio's key panel. No EEPROM or audio yet.
 
 Needs SDL2 and a Skia build. `scripts/build-skia.sh` clones depot_tools and Skia (branch pinned in the script) and builds a static, raster-only `libskia.a` in `~/skia` (set `SKIA_DIR` to change it). It takes a while and several GB.
 
@@ -138,13 +138,29 @@ build-gui/gui/landell-gui firmware.bin
 ```
 
 ```sh
-landell-gui [--scale N] [--adc CH=VAL] [--screenshot out.png [--steps N]] firmware.bin
+landell-gui [--scale N] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
 - `--scale N`: window pixels per LCD pixel, 1-16 (default 6).
 - `--adc CH=VAL`: set a SARADC channel (repeatable). Channel 9 (battery) defaults to 2000, otherwise the firmware shows no UI.
+- `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.
 - `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
 - Escape or closing the window quits.
+
+Keys work with the mouse (click and hold a button) or the keyboard:
+
+| PC key | Radio key |
+|--------|-----------|
+| `0`-`9`, keypad `0`-`9` | digits |
+| `Return` | MENU |
+| `Up` / `Down` | UP / DOWN |
+| `Backspace` | EXIT |
+| `*` or `Shift+8` | `*` |
+| `#`, `Shift+3` or `F` | `F` (`#`) |
+| `Space` | PTT (hold) |
+| `F1` / `F2` | side keys 1 / 2 |
+
+The keys go through the real keypad matrix on GPIOA (rows PA10-PA13, columns PA3-PA6) and PTT on PC5. The firmware debounces over several ms, so hold a key for a moment. The radio wakes its backlight on the first press after a timeout and ignores that press, as the real UV-K5 does.
 
 Real-time pacing assumes 48 MHz. Use an optimized build; if the emulator cannot keep up it prints a warning and runs slower than real time. Without `-Dgui=enabled` the build is unchanged.
 
