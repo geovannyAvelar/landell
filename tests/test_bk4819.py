@@ -394,6 +394,54 @@ def test_chip_gpio_output_change_notifies_host(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_scan_reports_tuned_frequency_once_squelch_opens(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        # REG_0D's high word is only 11 bits, so the scan result can't
+        # represent a frequency above 2**27 raw units; use one that fits.
+        link.write_register(0x78, (150 << 8) | 140)
+        link.write_register(0x38, 0x5678)
+        link.write_register(0x39, 0x0234)
+        link.write_register(0x32, 1)  # scan enable
+        assert link.read_register(0x0D) & (1 << 15)  # not finished yet
+        lib.dp32g030_bk4819_set_signal(ptr, 160, 0, 0)  # opens squelch
+        high = link.read_register(0x0D)
+        low = link.read_register(0x0E)
+        assert not high & (1 << 15)
+        freq = ((high & 0x7FF) << 16) | low
+        assert freq == 0x02345678
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_scan_not_finished_while_disabled(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x78, (150 << 8) | 140)
+        link.write_register(0x38, 0x5678)
+        link.write_register(0x39, 0x1234)
+        lib.dp32g030_bk4819_set_signal(ptr, 160, 0, 0)  # squelch opens
+        assert link.read_register(0x0D) & (1 << 15)  # scan never enabled
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_scan_reverts_to_not_finished_when_squelch_closes(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x78, (150 << 8) | 140)
+        link.write_register(0x32, 1)
+        lib.dp32g030_bk4819_set_signal(ptr, 160, 0, 0)
+        assert not link.read_register(0x0D) & (1 << 15)
+        lib.dp32g030_bk4819_set_signal(ptr, 100, 0, 0)  # below close threshold
+        assert link.read_register(0x0D) & (1 << 15)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
     ptr = new_cpu(lib)
     try:

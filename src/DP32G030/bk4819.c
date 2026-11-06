@@ -53,6 +53,30 @@ static void bk4819_update_squelch(dp32g030_cpu_t *c) {
   b->regs[0x02] |= now_open ? REG_02_SQUELCH_FOUND : REG_02_SQUELCH_LOST;
 }
 
+#define REG_32_SCAN_ENABLE (1u << 0)
+#define REG_0D_NOT_FINISHED (1u << 15)
+
+/* BK4819_GetFrequencyScanResult: while a scan is enabled (REG_32),
+   reports the currently tuned frequency as "found" whenever the
+   RSSI-threshold squelch is open (REG_0D/REG_0E), mirroring how the
+   real firmware only ever starts a scan at one frequency at a time
+   and relies on the chip's own RSSI/squelch to say whether that
+   frequency is active. */
+static void bk4819_update_scan(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+
+  if (!(b->regs[0x32] & REG_32_SCAN_ENABLE) || !b->squelch_open) {
+    b->regs[0x0D] |= REG_0D_NOT_FINISHED;
+    return;
+  }
+  {
+    uint32_t freq = (uint32_t)b->regs[0x38] | ((uint32_t)b->regs[0x39] << 16);
+
+    b->regs[0x0D] = (uint16_t)((freq >> 16) & 0x7FFu);
+    b->regs[0x0E] = (uint16_t)(freq & 0xFFFFu);
+  }
+}
+
 /* Inverse of the firmware's control_word = round(freq_Hz * 20.64888);
    returns freq in 0.1 Hz units, rounded. */
 static uint32_t ctc1_word_to_tenth_hz(uint16_t word) {
@@ -122,10 +146,15 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
 
     if (h->bk4819_freq_change)
       h->bk4819_freq_change(h->user, freq);
+    bk4819_update_scan(c);
     break;
   }
   case 0x78:
     bk4819_update_squelch(c);
+    bk4819_update_scan(c);
+    break;
+  case 0x32:
+    bk4819_update_scan(c);
     break;
   case 0x07:
     bk4819_update_ctcss(c);
@@ -240,6 +269,7 @@ void dp32g030_bk4819_set_signal(dp32g030_cpu_t *c, uint16_t rssi,
   b->regs[0x63] = glitch;
   b->regs[0x65] = noise & 0x7Fu;
   bk4819_update_squelch(c);
+  bk4819_update_scan(c);
 }
 
 uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c) {

@@ -42,6 +42,7 @@ void dp32g030_periph_reset(dp32g030_cpu_t *c) {
     p->iic[i].iflags = 0x01u; /* TXE */
     p->iic[i].sctrl = 0x08u;
   }
+  p->bk4819.regs[0x0D] = 1u << 15; /* frequency scan: not finished */
 }
 
 /* ---- generic register file ---------------------------------------- */
