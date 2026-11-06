@@ -40,6 +40,8 @@ DP32G030_DECL_RW(pwm_plus);
 DP32G030_DECL_RW(rtc);
 DP32G030_DECL_RW(iwdt);
 DP32G030_DECL_RW(wwdt);
+DP32G030_DECL_RW(aes);
+DP32G030_DECL_RW(iic);
 
 /* Advance all TIMER_BASE/TIMER_PLUS/PWM_BASE/PWM_PLUS units by `cycles`
    core clocks (called from dp32g030_soc_tick). */

@@ -25,9 +25,11 @@ Implemented:
 - RTC: a BCD calendar clock (time, date and weekday), with per-unit (seconds/minutes/hours/day) and half-second interrupts, and a one-shot or recurring alarm.
 - IWDT: a 20-bit down-counter watchdog. Expiring once raises an interrupt and reloads; expiring again unfed resets the core.
 - WWDT: a windowed 7-bit down-counter watchdog. Feeding outside its window, or the count reaching the reset threshold, resets the core; the window and pre-reset thresholds each raise their own interrupt.
-- SYSCON, PMU, PORTCON, flash control, I2C and AES as plain read/write register files (no behaviour yet).
+- AES128: ECB, CBC and CTR, encryption, decryption and key derivation, from a from-scratch AES-128 core (checked against the NIST SP 800-38A test vectors).
+- IIC0/1: master mode only, with a host transfer hook (start/write/read/stop), like SPI's. Transfers complete instantly.
+- SYSCON, PMU, PORTCON and flash control as plain read/write register files (no behaviour yet).
 
-Not yet implemented: behaviour for the register-file blocks above, clock gating, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps; the register layout for TIMER_BASE/PLUS, PWM_BASE/PLUS, RTC, IWDT and WWDT above comes from the `dp32g030` Rust SVD (itself derived from the UV-K5 firmware's register definitions), not from this project's own headers.
+Not yet implemented: behaviour for the register-file blocks above, clock gating, I2C slave mode, and the BK4819 RF chip. The reference headers had no timer, PWM, I2C, RTC or watchdog register maps; the register layout for TIMER_BASE/PLUS, PWM_BASE/PLUS, RTC, IWDT, WWDT, AES128 and IIC above comes from the `dp32g030` Rust SVD (itself derived from the UV-K5 firmware's register definitions), not from this project's own headers.
 
 TIMER_BASE/PLUS and PWM_BASE/PLUS model limits:
 
@@ -43,6 +45,12 @@ RTC/IWDT/WWDT model limits:
 - RTC's leap-year rule is a plain `year % 4` (the 2-digit BCD year has no century to apply the usual exceptions to).
 - RTC_VALID.CUR_VALID simply follows RTC_EN; the real chip's exact validity conditions after enabling or loading are unclear from the register description alone.
 - IWDT's 20-bit `IWDT_LOAD` count is modeled as core clocks, not the separate watchdog oscillator the real chip likely uses.
+
+AES128/IIC model limits:
+
+- AES128 processes a block synchronously on the 4th `AES_DINR` write; there is no pipelining, so `WRERR`/`RDERR` only catch a write with `EN` disabled or a read before `CCF`, not real overlapping-access timing.
+- IIC slave mode (`IIC_SCTRL`, `IIC_SADDR`) and features that only matter for it (clock stretching, master-code detection, address matching) are stored but inert.
+- IIC timing (`IIC_MSPC`'s `SCL_HI`/`SCL_LOW`/`DAT_HD`, the `MLTO` SCL-low timeout) is not modeled; transfers complete instantly like SPI's.
 
 Model limits:
 

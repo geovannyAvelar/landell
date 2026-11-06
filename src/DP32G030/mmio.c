@@ -28,6 +28,10 @@
   REGION_RW(n, b, clk, irq_n, dp32g030_rtc_read, dp32g030_rtc_write)
 #define IWDT_REGION(n, b, clk, irq_n) \
   REGION_RW(n, b, clk, irq_n, dp32g030_iwdt_read, dp32g030_iwdt_write)
+#define AES_REGION(n, b, clk, irq_n) \
+  REGION_RW(n, b, clk, irq_n, dp32g030_aes_read, dp32g030_aes_write)
+#define IIC_REGION(n, b, clk, irq_n) \
+  REGION_RW(n, b, clk, irq_n, dp32g030_iic_read, dp32g030_iic_write)
 #define WWDT_REGION(n, b, clk, irq_n) \
   REGION_RW(n, b, clk, irq_n, dp32g030_wwdt_read, dp32g030_wwdt_write)
 
@@ -58,10 +62,10 @@ static const dp32g030_region_t dp32g030_regions[] = {
     PWM_PLUS_REGION(PWM_PLUS1, 0x400B4800u, 21, 12),
     SPI_REGION(SPI0, 0x400B8000u, 10, 16),
     SPI_REGION(SPI1, 0x400B8800u, 11, 17),
-    REGION(IIC0, 0x400B9000u, 4, 18),
-    REGION(IIC1, 0x400B9800u, 5, 19),
+    IIC_REGION(IIC0, 0x400B9000u, 4, 18),
+    IIC_REGION(IIC1, 0x400B9800u, 5, 19),
     ADC_REGION(SARADC, 0x400BA000u, 25, 4),
-    REGION(AES128, 0x400BD000u, 28, -1),
+    AES_REGION(AES128, 0x400BD000u, 28, -1),
 };
 
 extern const dp32g030_region_t dp32g030_scs_region;

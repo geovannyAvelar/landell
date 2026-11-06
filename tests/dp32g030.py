@@ -92,6 +92,10 @@ class Uart(ctypes.Structure):
 
 
 SPI_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint8)
+I2C_START_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
+I2C_WRITE_CB = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint8)
+I2C_READ_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, ctypes.c_bool)
+I2C_STOP_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
 
 
 class Spi(ctypes.Structure):
@@ -233,12 +237,43 @@ class Wwdt(ctypes.Structure):
     ]
 
 
+class Aes(ctypes.Structure):
+    _fields_ = [
+        ("cr", ctypes.c_uint32),
+        ("sr", ctypes.c_uint32),
+        ("key", ctypes.c_uint32 * 4),
+        ("iv", ctypes.c_uint32 * 4),
+        ("din", ctypes.c_uint32 * 4),
+        ("dout", ctypes.c_uint32 * 4),
+        ("din_count", ctypes.c_uint),
+        ("dout_count", ctypes.c_uint),
+    ]
+
+
+class Iic(ctypes.Structure):
+    _fields_ = [
+        ("ccfg", ctypes.c_uint32),
+        ("ctrans", ctypes.c_uint32),
+        ("ie", ctypes.c_uint32),
+        ("iflags", ctypes.c_uint32),
+        ("sctrl", ctypes.c_uint32),
+        ("saddr", ctypes.c_uint32),
+        ("rxdata", ctypes.c_uint8),
+        ("txdata", ctypes.c_uint8),
+        ("busy", ctypes.c_bool),
+    ]
+
+
 class Hooks(ctypes.Structure):
     _fields_ = [
         ("user", ctypes.c_void_p),
         ("uart_tx", UART_TX_CB),
         ("gpio_change", GPIO_CB),
         ("spi_xfer", SPI_CB),
+        ("i2c_start", I2C_START_CB),
+        ("i2c_write", I2C_WRITE_CB),
+        ("i2c_read", I2C_READ_CB),
+        ("i2c_stop", I2C_STOP_CB),
     ]
 
 
@@ -260,6 +295,8 @@ class Periph(ctypes.Structure):
         ("rtc", Rtc),
         ("iwdt", Iwdt),
         ("wwdt", Wwdt),
+        ("aes", Aes),
+        ("iic", Iic * 2),
         ("hooks", Hooks),
     ]
 

@@ -37,6 +37,11 @@ void dp32g030_periph_reset(dp32g030_cpu_t *c) {
   p->iwdt.cnt = 0xFFFFu;
   p->wwdt.load = 0x40u;
   p->wwdt.value = 0x7Fu;
+  for (unsigned i = 0; i < 2; i++) {
+    p->iic[i].ccfg = 0x18u;
+    p->iic[i].iflags = 0x01u; /* TXE */
+    p->iic[i].sctrl = 0x08u;
+  }
 }
 
 /* ---- generic register file ---------------------------------------- */

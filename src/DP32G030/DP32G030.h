@@ -237,6 +237,24 @@ typedef struct {
   uint32_t load, ctrl, iflags, value, presc;
 } dp32g030_wwdt_t;
 
+/* AES128: ECB/CBC/CTR encryption, decryption and key derivation. One
+   128-bit block is processed as soon as the 4th DINR word is written;
+   there is no pipelining (see README). */
+typedef struct {
+  uint32_t cr, sr;
+  uint32_t key[4], iv[4];
+  uint32_t din[4], dout[4];
+  unsigned din_count, dout_count;
+} dp32g030_aes_t;
+
+/* IIC0-1: master mode only (slave registers are stored but inert; see
+   README). Transfers complete instantly, like SPI. */
+typedef struct {
+  uint32_t ccfg, ctrans, ie, iflags, sctrl, saddr;
+  uint8_t rxdata, txdata;
+  bool busy;
+} dp32g030_iic_t;
+
 /* Host callbacks. Any may be NULL. */
 typedef struct {
   void *user;
@@ -245,6 +263,14 @@ typedef struct {
   void (*gpio_change)(void *user, unsigned port, uint32_t pins, uint32_t dir);
   /* Full-duplex SPI master transfer of one byte; returns the byte read. */
   uint8_t (*spi_xfer)(void *user, unsigned spi, uint8_t tx);
+  /* I2C master: start/repeated-start condition. */
+  void (*i2c_start)(void *user, unsigned iic);
+  /* I2C master: send one byte; returns true if the slave ACKed. */
+  bool (*i2c_write)(void *user, unsigned iic, uint8_t byte);
+  /* I2C master: receive one byte, sending `ack` (true) or NACK. */
+  uint8_t (*i2c_read)(void *user, unsigned iic, bool ack);
+  /* I2C master: stop condition. */
+  void (*i2c_stop)(void *user, unsigned iic);
 } dp32g030_hooks_t;
 
 typedef struct {
@@ -261,6 +287,8 @@ typedef struct {
   dp32g030_rtc_t rtc;
   dp32g030_iwdt_t iwdt;
   dp32g030_wwdt_t wwdt;
+  dp32g030_aes_t aes;
+  dp32g030_iic_t iic[2];
   dp32g030_hooks_t hooks;
 } dp32g030_periph_t;
 
