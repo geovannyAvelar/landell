@@ -21,6 +21,14 @@ lcd_view_lib = static_library('lcd_view', files('lcd_view.cpp'),
   dependencies : gui_deps,
   override_options : gui_opts)
 
+keypad_lib = static_library('keypad', files('keypad.cpp'),
+  dependencies : gui_deps,
+  override_options : gui_opts)
+
+test('keypad',
+  executable('test_keypad', files('test_keypad.cpp'),
+    link_with : keypad_lib, dependencies : gui_deps,
+    override_options : gui_opts))
 test('pacer',
   executable('test_pacer', files('test_pacer.cpp'),
     link_with : pacer_lib, override_options : gui_opts))
