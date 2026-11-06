@@ -26,6 +26,10 @@
 #define REG_24_ENABLE (1u << 5)
 #define REG_24_SELECT_DTMF (1u << 4)
 
+#define REG_02_VOX_LOST (1u << 4)
+#define REG_02_VOX_FOUND (1u << 5)
+#define REG_31_VOX_ENABLE (1u << 2)
+
 static void bk4819_reset_transaction(dp32g030_bk4819_t *b) {
   b->selected = false;
   b->addr_phase = false;
@@ -88,6 +92,24 @@ static void bk4819_update_cdcss(dp32g030_cpu_t *c) {
   b->regs[0x02] |= found ? REG_02_CDCSS_FOUND : REG_02_CDCSS_LOST;
 }
 
+static void bk4819_update_vox(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  uint16_t amp = b->regs[0x64] & 0x7FFFu;
+  uint16_t enable_thresh = b->regs[0x46] & 0x07FFu;
+  uint16_t disable_thresh = b->regs[0x79] & 0x07FFu;
+  bool was_active = b->vox_active;
+  bool now_active;
+
+  if (!(b->regs[0x31] & REG_31_VOX_ENABLE))
+    now_active = false;
+  else
+    now_active = was_active ? amp >= disable_thresh : amp >= enable_thresh;
+  if (now_active == was_active)
+    return;
+  b->vox_active = now_active;
+  b->regs[0x02] |= now_active ? REG_02_VOX_FOUND : REG_02_VOX_LOST;
+}
+
 /* Apply side effects for a register that was just written by the host
    protocol (address `addr`, 16-bit value already stored in regs[addr]). */
 static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
@@ -119,6 +141,16 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
   case 0x51:
     bk4819_update_cdcss(c);
     break;
+  case 0x31: case 0x46: case 0x79: case 0x64:
+    bk4819_update_vox(c);
+    break;
+  case 0x33: {
+    const dp32g030_hooks_t *h = &c->periph.hooks;
+
+    if (h->bk4819_gpio_change)
+      h->bk4819_gpio_change(h->user, (uint8_t)b->regs[0x33]);
+    break;
+  }
   default:
     break;
   }
@@ -181,7 +213,7 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
           b->regs[0x02] &= (uint16_t)~(
               REG_02_SQUELCH_FOUND | REG_02_SQUELCH_LOST | REG_02_CTCSS_FOUND |
               REG_02_CTCSS_LOST | REG_02_CDCSS_FOUND | REG_02_CDCSS_LOST |
-              REG_02_DTMF_5TONE_FOUND);
+              REG_02_DTMF_5TONE_FOUND | REG_02_VOX_FOUND | REG_02_VOX_LOST);
         b->bitpos = 0;
         dp32g030_gpio_set_input(c, 2, BK4819_PIN_SDA,
                                 (b->shift & 0x8000u) ? BK4819_PIN_SDA : 0);
@@ -250,4 +282,9 @@ bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit) {
   b->regs[0x0B] = (uint16_t)((b->regs[0x0B] & ~0x0F00u) | (code << 8));
   b->regs[0x02] |= REG_02_DTMF_5TONE_FOUND;
   return true;
+}
+
+void dp32g030_bk4819_set_mic_level(dp32g030_cpu_t *c, uint16_t amplitude) {
+  c->periph.bk4819.regs[0x64] = amplitude & 0x7FFFu;
+  bk4819_update_vox(c);
 }

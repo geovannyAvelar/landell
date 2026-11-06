@@ -97,6 +97,7 @@ I2C_WRITE_CB = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_uint, c
 I2C_READ_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, ctypes.c_bool)
 I2C_STOP_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
 BK4819_FREQ_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32)
+BK4819_GPIO_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint8)
 
 
 class Spi(ctypes.Structure):
@@ -285,6 +286,7 @@ class Bk4819(ctypes.Structure):
         ("cdcss_found", ctypes.c_bool),
         ("cdcss_low", ctypes.c_uint16),
         ("cdcss_high", ctypes.c_uint16),
+        ("vox_active", ctypes.c_bool),
     ]
 
 
@@ -299,6 +301,7 @@ class Hooks(ctypes.Structure):
         ("i2c_read", I2C_READ_CB),
         ("i2c_stop", I2C_STOP_CB),
         ("bk4819_freq_change", BK4819_FREQ_CB),
+        ("bk4819_gpio_change", BK4819_GPIO_CB),
     ]
 
 
@@ -414,6 +417,7 @@ def load_lib(workdir):
     ]
     lib.dp32g030_bk4819_signal_dtmf.argtypes = [ctypes.POINTER(Cpu), ctypes.c_char]
     lib.dp32g030_bk4819_signal_dtmf.restype = ctypes.c_bool
+    lib.dp32g030_bk4819_set_mic_level.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint16]
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,

@@ -276,6 +276,7 @@ typedef struct {
   bool cdcss_present_in;   /* whether a CDCSS signal is being received at all */
   bool ctcss_found, cdcss_found;
   uint16_t cdcss_low, cdcss_high; /* the two REG_08 halves, 12 bits each */
+  bool vox_active;
 } dp32g030_bk4819_t;
 
 /* Host callbacks. Any may be NULL. */
@@ -296,6 +297,11 @@ typedef struct {
   void (*i2c_stop)(void *user, unsigned iic);
   /* BK4819: firmware tuned a new frequency (REG_38/REG_39), raw units. */
   void (*bk4819_freq_change)(void *user, uint32_t freq);
+  /* BK4819: its own GPIO0-6 output state changed (REG_33, low byte).
+     GPIOn is bit (6-n) of `state`: 0=RX enable, 1=PA enable, 3=UHF LNA,
+     4=VHF LNA, 5=red LED, 6=green LED (see BK4819_GPIO_PIN_t in the
+     real driver; GPIO2 is unused there). */
+  void (*bk4819_gpio_change)(void *user, uint8_t state);
 } dp32g030_hooks_t;
 
 typedef struct {
@@ -395,3 +401,8 @@ void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
    the decoder enabled and selected for DTMF (not SELCALL); returns
    whether it did. Sets REG_0B's code and DTMF_5TONE_FOUND (REG_02). */
 bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit);
+/* BK4819: set the simulated mic/voice amplitude (REG_64, 15 bits).
+   Compared against REG_46/REG_79's VOX enable/disable thresholds with
+   hysteresis (no delay, unlike the real chip's REG_7A delay) when VOX
+   is enabled (REG_31 bit 2); raises VOX_FOUND/LOST on REG_02. */
+void dp32g030_bk4819_set_mic_level(dp32g030_cpu_t *c, uint16_t amplitude);

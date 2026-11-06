@@ -334,6 +334,66 @@ def test_dtmf_rejects_unknown_character(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_vox_activates_above_enable_threshold(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x46, 200)  # enable threshold
+        link.write_register(0x79, 100)  # disable threshold
+        link.write_register(0x31, 1 << 2)  # VOX enable
+        assert not link.read_register(0x02) & (1 << 5)
+        lib.dp32g030_bk4819_set_mic_level(ptr, 250)
+        assert link.read_register(0x02) & (1 << 5)  # VOX_FOUND
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_vox_has_hysteresis(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x46, 200)
+        link.write_register(0x79, 100)
+        link.write_register(0x31, 1 << 2)
+        lib.dp32g030_bk4819_set_mic_level(ptr, 250)
+        assert link.read_register(0x02) & (1 << 5)
+        lib.dp32g030_bk4819_set_mic_level(ptr, 150)  # below enable, above disable
+        assert ptr.contents.periph.bk4819.vox_active  # stays active
+        lib.dp32g030_bk4819_set_mic_level(ptr, 50)  # below disable
+        assert not ptr.contents.periph.bk4819.vox_active
+        assert link.read_register(0x02) & (1 << 4)  # VOX_LOST
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_vox_ignored_when_disabled(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x46, 200)
+        link.write_register(0x79, 100)
+        lib.dp32g030_bk4819_set_mic_level(ptr, 250)
+        assert not ptr.contents.periph.bk4819.vox_active
+        assert not link.read_register(0x02) & (1 << 5)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_chip_gpio_output_change_notifies_host(lib):
+    ptr = new_cpu(lib)
+    try:
+        seen = []
+        ptr.contents.periph.hooks.bk4819_gpio_change = emu.BK4819_GPIO_CB(
+            lambda user, state: seen.append(state)
+        )
+        link = Link(ptr, lib)
+        link.write_register(0x33, 0x40)  # GPIO0 (RX enable) on
+        link.write_register(0x33, 0x60)  # + GPIO1 (PA enable) on
+        assert seen == [0x40, 0x60]
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
     ptr = new_cpu(lib)
     try:
