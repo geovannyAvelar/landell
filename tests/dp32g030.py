@@ -412,6 +412,8 @@ def load_lib(workdir):
     lib.dp32g030_bk4819_set_cdcss_code.argtypes = [
         ctypes.POINTER(Cpu), ctypes.c_uint32, ctypes.c_bool,
     ]
+    lib.dp32g030_bk4819_signal_dtmf.argtypes = [ctypes.POINTER(Cpu), ctypes.c_char]
+    lib.dp32g030_bk4819_signal_dtmf.restype = ctypes.c_bool
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,

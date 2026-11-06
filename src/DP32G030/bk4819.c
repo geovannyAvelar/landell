@@ -22,6 +22,10 @@
 
 #define REG_51_CDCSS_24BIT (1u << 11)
 
+#define REG_02_DTMF_5TONE_FOUND (1u << 11)
+#define REG_24_ENABLE (1u << 5)
+#define REG_24_SELECT_DTMF (1u << 4)
+
 static void bk4819_reset_transaction(dp32g030_bk4819_t *b) {
   b->selected = false;
   b->addr_phase = false;
@@ -174,7 +178,10 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
            present the first (MSB) response bit before it samples. */
         b->shift = b->regs[b->addr];
         if (b->addr == 0x02)
-          b->regs[0x02] &= (uint16_t)~(REG_02_SQUELCH_FOUND | REG_02_SQUELCH_LOST);
+          b->regs[0x02] &= (uint16_t)~(
+              REG_02_SQUELCH_FOUND | REG_02_SQUELCH_LOST | REG_02_CTCSS_FOUND |
+              REG_02_CTCSS_LOST | REG_02_CDCSS_FOUND | REG_02_CDCSS_LOST |
+              REG_02_DTMF_5TONE_FOUND);
         b->bitpos = 0;
         dp32g030_gpio_set_input(c, 2, BK4819_PIN_SDA,
                                 (b->shift & 0x8000u) ? BK4819_PIN_SDA : 0);
@@ -225,4 +232,22 @@ void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
   b->cdcss_code_in = code;
   b->cdcss_present_in = present;
   bk4819_update_cdcss(c);
+}
+
+bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit) {
+  static const char keys[16] = "0123456789ABCD*#";
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  unsigned code;
+
+  if ((b->regs[0x24] & (REG_24_ENABLE | REG_24_SELECT_DTMF)) !=
+      (REG_24_ENABLE | REG_24_SELECT_DTMF))
+    return false; /* the 5-tone decoder isn't enabled for DTMF */
+  for (code = 0; code < 16; code++)
+    if (keys[code] == digit)
+      break;
+  if (code == 16)
+    return false;
+  b->regs[0x0B] = (uint16_t)((b->regs[0x0B] & ~0x0F00u) | (code << 8));
+  b->regs[0x02] |= REG_02_DTMF_5TONE_FOUND;
+  return true;
 }

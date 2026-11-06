@@ -277,6 +277,63 @@ def test_cdcss_lost_when_signal_disappears(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_dtmf_digit_sets_code_and_found(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x24, (1 << 5) | (1 << 4))  # ENABLE | SELECT_DTMF
+        assert lib.dp32g030_bk4819_signal_dtmf(ptr, b"7")
+        assert (link.read_register(0x0B) >> 8) & 0xF == 7
+        assert link.read_register(0x02) & (1 << 11)  # DTMF_5TONE_FOUND
+        assert not link.read_register(0x02) & (1 << 11)  # cleared on read
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_dtmf_letters_and_symbols_map_correctly(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x24, (1 << 5) | (1 << 4))
+        for digit, code in [(b"A", 10), (b"D", 13), (b"*", 14), (b"#", 15)]:
+            assert lib.dp32g030_bk4819_signal_dtmf(ptr, digit)
+            assert (link.read_register(0x0B) >> 8) & 0xF == code
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_dtmf_ignored_when_decoder_disabled(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        assert not lib.dp32g030_bk4819_signal_dtmf(ptr, b"5")
+        assert not link.read_register(0x02) & (1 << 11)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_dtmf_ignored_when_selected_for_selcall(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x24, 1 << 5)  # ENABLE but SELECT=SELCALL
+        assert not lib.dp32g030_bk4819_signal_dtmf(ptr, b"5")
+        assert not link.read_register(0x02) & (1 << 11)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_dtmf_rejects_unknown_character(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x24, (1 << 5) | (1 << 4))
+        assert not lib.dp32g030_bk4819_signal_dtmf(ptr, b"x")
+        assert not link.read_register(0x02) & (1 << 11)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
     ptr = new_cpu(lib)
     try:

@@ -390,3 +390,8 @@ void dp32g030_bk4819_set_ctcss_tone(dp32g030_cpu_t *c, uint32_t tenth_hz);
    assembled from REG_08; CDCSS_FOUND/LOST raised on REG_02 as above. */
 void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
                                     bool present);
+/* BK4819: signal that `digit` ('0'-'9', 'A'-'D', '*' or '#') was just
+   decoded by the 5-tone DTMF detector. Only takes effect if REG_24 has
+   the decoder enabled and selected for DTMF (not SELCALL); returns
+   whether it did. Sets REG_0B's code and DTMF_5TONE_FOUND (REG_02). */
+bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit);
