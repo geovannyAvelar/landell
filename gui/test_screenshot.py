@@ -39,6 +39,11 @@ with tempfile.TemporaryDirectory() as d:
     r = run(str(junk))
     check(r.returncode == 1 and "not a valid image" in r.stderr, f"junk: {r}")
 
+    r = run("--soc", "bogus", str(fw))
+    check(r.returncode == 1 and "soc" in r.stderr, f"--soc bogus: {r}")
+    r = run("--soc", "py32f071", str(fw))  # a DP32G030 image
+    check(r.returncode == 1 and "py32f071" in r.stderr, f"py32 vs dp32 image: {r}")
+
     r = run("--adc", "16=1", str(fw))
     check(r.returncode == 1 and "adc" in r.stderr, f"adc: {r}")
 
@@ -67,3 +72,11 @@ with tempfile.TemporaryDirectory() as d:
             "--press", "menu,ptt", str(fw))
     check(a.returncode == 0 and b.returncode == 0, f"press runs: {a} {b}")
     check(plain.read_bytes() != pressed.read_bytes(), "--press changes the picture")
+
+    # a PY32F071 app image is detected from its reset vector (and with --soc)
+    py = Path(d) / "py32.bin"
+    py.write_bytes(struct.pack("<IIH", 0x20004000, 0x08002809, 0xBE00))
+    for extra in ([], ["--soc", "py32f071"], ["--soc", "auto"]):
+        out = Path(d) / "py.png"
+        r = run(*extra, "--screenshot", str(out), "--steps", "100", "--scale", "2", str(py))
+        check(r.returncode == 0 and out.exists(), f"py32 {extra}: {r}")

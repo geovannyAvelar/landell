@@ -27,6 +27,9 @@ public:
   void refresh();
   // For hooks.gpio_change: recompute when GPIOA changed.
   void on_gpio_change(unsigned port);
+  // A keypad that is not wired to the chip tracks presses (for the panel) but
+  // leaves the GPIO alone. The matrix here is the UV-K5 V1/V2 one.
+  void set_wired(bool wired) { wired_ = wired; }
   // Call after dp32g030_cpu_run may have replaced the cpu object.
   void set_cpu(dp32g030_cpu_t *cpu) { cpu_ = cpu; }
 
@@ -34,4 +37,5 @@ private:
   dp32g030_cpu_t *cpu_;
   bool down_[int(Key::Count)] = {};
   bool refreshing_ = false;
+  bool wired_ = true;
 };

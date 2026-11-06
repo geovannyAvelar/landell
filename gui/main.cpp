@@ -30,8 +30,6 @@ namespace {
 constexpr int kLcdWidth = 128;
 constexpr int kLcdHeight = 64;
 constexpr int kDefaultScale = 4;
-constexpr unsigned kBatteryAdcChannel = 9;
-constexpr unsigned kBatteryAdcValue = 2000;
 constexpr size_t kDefaultScreenshotSteps = 10000000;
 
 enum {
@@ -46,6 +44,7 @@ struct AdcInput {
 };
 
 struct Options {
+  const char *soc = "auto";
   const char *path = nullptr;
   const char *screenshot = nullptr;
   int scale = kDefaultScale;
@@ -73,10 +72,11 @@ void gpio_changed(void *user, unsigned port, uint32_t, uint32_t) {
 void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
-      "usage: %s [--scale N] [-a|--adc CH=VAL] [--press KEYS] [--screenshot out.png "
+      "usage: %s [--scale N] [--soc CHIP] [-a|--adc CH=VAL] [--press KEYS] [--screenshot out.png "
       "[--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
+      "  --soc CHIP         auto (default), dp32g030 or py32f071\n"
       "  -a, --adc CH=VAL   set SARADC channel CH (0-15) to 12-bit VAL; "
       "repeatable\n"
       "  --press KEY[,KEY]  hold keys from the start (0-9 menu up down exit "
@@ -128,6 +128,14 @@ int parse_args(int argc, char **argv, Options *o) {
         return EXIT_USAGE;
       }
       o->steps = size_t(v);
+      continue;
+    }
+    if (!std::strcmp(arg, "--soc")) {
+      if (++i >= argc) {
+        std::fprintf(stderr, "%s: --soc needs a chip name\n", prog);
+        return EXIT_USAGE;
+      }
+      o->soc = argv[i];
       continue;
     }
     if (!std::strcmp(arg, "--press")) {
@@ -476,16 +484,31 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "%s: cannot read '%s'\n", argv[0], opts.path);
     return EXIT_USAGE;
   }
-  dp32g030_cpu_t *cpu = dp32g030_cpu_new(fw, size);
+  const dp32g030_soc_t *soc;
+  if (!std::strcmp(opts.soc, "auto")) {
+    soc = dp32g030_soc_detect(fw, size);
+  } else {
+    soc = dp32g030_soc_by_name(opts.soc);
+    if (!soc) {
+      std::fprintf(stderr, "%s: unknown --soc '%s' (auto, dp32g030, py32f071)\n",
+                   argv[0], opts.soc);
+      std::free(fw);
+      return EXIT_USAGE;
+    }
+  }
+  dp32g030_cpu_t *cpu = dp32g030_cpu_new_soc(soc, fw, size);
   std::free(fw);
   if (!cpu) {
-    std::fprintf(stderr, "%s: '%s' is not a valid image (%zu bytes)\n", argv[0],
-                 opts.path, size);
+    std::fprintf(stderr, "%s: '%s' is not a valid image for %s (%zu bytes)\n",
+                 argv[0], opts.path, dp32g030_soc_name(soc), size);
     return EXIT_USAGE;
   }
 
   Ui ui;
   Keypad keypad(cpu);
+  // The key matrix here is the UV-K5 V1/V2 one; the V3/K1 matrix comes with
+  // their radio models, until then those keys do not reach the firmware.
+  keypad.set_wired(!std::strcmp(dp32g030_soc_name(soc), "dp32g030"));
   ui.keypad = &keypad;
   cpu->periph.hooks.user = &ui;
   cpu->periph.hooks.lcd_update = lcd_updated;
@@ -494,7 +517,7 @@ int main(int argc, char **argv) {
   for (unsigned i = 0; i < opts.press_n; i++)
     keypad.set(opts.press[i], true);
 
-  dp32g030_adc_set_input(cpu, kBatteryAdcChannel, kBatteryAdcValue);
+  dp32g030_soc_defaults(cpu);
   for (unsigned i = 0; i < opts.adc_n; i++)
     dp32g030_adc_set_input(cpu, opts.adc[i].ch, opts.adc[i].val);
 

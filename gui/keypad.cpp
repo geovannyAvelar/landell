@@ -44,7 +44,7 @@ void Keypad::set(Key k, bool pressed) {
 }
 
 void Keypad::refresh() {
-  if (refreshing_)
+  if (refreshing_ || !wired_)
     return;
   refreshing_ = true;
 

@@ -147,6 +147,20 @@ int main() {
     CHECK(cols(cpu) == ((i & 1) ? 0xFu : 0xEu));
   }
 
+  { // unwired_keypad_does_not_touch_gpio
+    dp32g030_cpu_t *other = make_cpu();
+    Keypad idle(other);
+
+    idle.set_wired(false);
+    idle.refresh();
+    idle.set(Key::Menu, true);
+    idle.set(Key::Ptt, true);
+    CHECK(other->periph.gpio[0].driven == 0);
+    CHECK(other->periph.gpio[2].driven == 0);
+    CHECK(idle.pressed(Key::Menu)); // the state is still tracked for the panel
+    dp32g030_cpu_free(other);
+  }
+
   dp32g030_cpu_free(cpu);
   return failures ? 1 : 0;
 }
