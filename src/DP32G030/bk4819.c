@@ -30,6 +30,9 @@
 #define REG_02_VOX_FOUND (1u << 5)
 #define REG_31_VOX_ENABLE (1u << 2)
 
+static void bk4819_fsk_fifo_status(dp32g030_bk4819_t *b);
+static void bk4819_fsk_fifo_pop(dp32g030_bk4819_t *b);
+
 static void bk4819_reset_transaction(dp32g030_bk4819_t *b) {
   b->selected = false;
   b->addr_phase = false;
@@ -54,6 +57,14 @@ static void bk4819_update_squelch(dp32g030_cpu_t *c) {
 }
 
 #define REG_32_SCAN_ENABLE (1u << 0)
+
+#define REG_59_RX_FIFO_CLEAR (1u << 14)
+#define REG_59_FSK_RX_ENABLE (1u << 12)
+#define REG_02_FSK_RX_FINISHED (1u << 13)
+#define REG_02_FSK_FIFO_ALMOST_FULL (1u << 12)
+#define REG_02_FSK_FIFO_ALMOST_EMPTY (1u << 14)
+#define FSK_FIFO_DEPTH 8u
+#define FSK_FIFO_ALMOST_FULL_LEVEL 4u
 #define REG_0D_NOT_FINISHED (1u << 15)
 
 /* BK4819_GetFrequencyScanResult: while a scan is enabled (REG_32),
@@ -180,9 +191,39 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
       h->bk4819_gpio_change(h->user, (uint8_t)b->regs[0x33]);
     break;
   }
+  case 0x59:
+    if (b->regs[0x59] & REG_59_RX_FIFO_CLEAR) {
+      b->fsk_rx_head = b->fsk_rx_count = 0;
+      bk4819_fsk_fifo_status(b);
+    }
+    break;
   default:
     break;
   }
+}
+
+static void bk4819_fsk_fifo_status(dp32g030_bk4819_t *b) {
+  if (b->fsk_rx_count >= FSK_FIFO_ALMOST_FULL_LEVEL)
+    b->regs[0x02] |= REG_02_FSK_FIFO_ALMOST_FULL;
+  else
+    b->regs[0x02] &= (uint16_t)~REG_02_FSK_FIFO_ALMOST_FULL;
+  if (b->fsk_rx_count == 0)
+    b->regs[0x02] |= REG_02_FSK_FIFO_ALMOST_EMPTY;
+  else
+    b->regs[0x02] &= (uint16_t)~REG_02_FSK_FIFO_ALMOST_EMPTY;
+}
+
+/* Pop the front of the RX FIFO into regs[0x5F] (0 if empty), ready for
+   the bit-bang read phase to stream out. */
+static void bk4819_fsk_fifo_pop(dp32g030_bk4819_t *b) {
+  if (b->fsk_rx_count == 0) {
+    b->regs[0x5F] = 0;
+    return;
+  }
+  b->regs[0x5F] = b->fsk_rx[b->fsk_rx_head];
+  b->fsk_rx_head = (b->fsk_rx_head + 1) % FSK_FIFO_DEPTH;
+  b->fsk_rx_count--;
+  bk4819_fsk_fifo_status(b);
 }
 
 /* Called after every GPIOC DATA/DIR write, with the port's effective
@@ -237,12 +278,15 @@ void dp32g030_bk4819_gpio_edge(dp32g030_cpu_t *c, uint32_t before,
         /* The host just switched SDA to input: snapshot the register
            (so it reads consistently even if it changes mid-stream) and
            present the first (MSB) response bit before it samples. */
+        if (b->addr == 0x5F)
+          bk4819_fsk_fifo_pop(b);
         b->shift = b->regs[b->addr];
         if (b->addr == 0x02)
           b->regs[0x02] &= (uint16_t)~(
               REG_02_SQUELCH_FOUND | REG_02_SQUELCH_LOST | REG_02_CTCSS_FOUND |
               REG_02_CTCSS_LOST | REG_02_CDCSS_FOUND | REG_02_CDCSS_LOST |
-              REG_02_DTMF_5TONE_FOUND | REG_02_VOX_FOUND | REG_02_VOX_LOST);
+              REG_02_DTMF_5TONE_FOUND | REG_02_VOX_FOUND | REG_02_VOX_LOST |
+              REG_02_FSK_RX_FINISHED);
         b->bitpos = 0;
         dp32g030_gpio_set_input(c, 2, BK4819_PIN_SDA,
                                 (b->shift & 0x8000u) ? BK4819_PIN_SDA : 0);
@@ -317,4 +361,19 @@ bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit) {
 void dp32g030_bk4819_set_mic_level(dp32g030_cpu_t *c, uint16_t amplitude) {
   c->periph.bk4819.regs[0x64] = amplitude & 0x7FFFu;
   bk4819_update_vox(c);
+}
+
+bool dp32g030_bk4819_fsk_rx_push(dp32g030_cpu_t *c, uint16_t word) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+
+  if (!(b->regs[0x59] & REG_59_FSK_RX_ENABLE) || b->fsk_rx_count >= FSK_FIFO_DEPTH)
+    return false;
+  b->fsk_rx[(b->fsk_rx_head + b->fsk_rx_count) % FSK_FIFO_DEPTH] = word;
+  b->fsk_rx_count++;
+  bk4819_fsk_fifo_status(b);
+  return true;
+}
+
+void dp32g030_bk4819_fsk_rx_finish(dp32g030_cpu_t *c) {
+  c->periph.bk4819.regs[0x02] |= REG_02_FSK_RX_FINISHED;
 }

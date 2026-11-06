@@ -442,6 +442,80 @@ def test_scan_reverts_to_not_finished_when_squelch_closes(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_fsk_rx_push_and_read_fifo(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x59, 1 << 12)  # FSK RX enable
+        assert lib.dp32g030_bk4819_fsk_rx_push(ptr, 0x1234)
+        assert lib.dp32g030_bk4819_fsk_rx_push(ptr, 0x5678)
+        assert link.read_register(0x5F) == 0x1234
+        assert link.read_register(0x5F) == 0x5678
+        assert link.read_register(0x5F) == 0  # drained
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_fsk_rx_almost_full_at_four_words(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x59, 1 << 12)
+        for i in range(3):
+            lib.dp32g030_bk4819_fsk_rx_push(ptr, i)
+        assert not link.read_register(0x02) & (1 << 12)
+        lib.dp32g030_bk4819_fsk_rx_push(ptr, 3)
+        assert link.read_register(0x02) & (1 << 12)  # FSK_FIFO_ALMOST_FULL
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_fsk_rx_push_ignored_when_disabled(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        assert not lib.dp32g030_bk4819_fsk_rx_push(ptr, 0x1234)
+        assert ptr.contents.periph.bk4819.fsk_rx_count == 0
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_fsk_rx_push_fails_when_fifo_full(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x59, 1 << 12)
+        for i in range(8):
+            assert lib.dp32g030_bk4819_fsk_rx_push(ptr, i)
+        assert not lib.dp32g030_bk4819_fsk_rx_push(ptr, 99)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_fsk_rx_clear_via_reg59(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x59, 1 << 12)
+        lib.dp32g030_bk4819_fsk_rx_push(ptr, 0x1234)
+        link.write_register(0x59, (1 << 12) | (1 << 14))  # RX FIFO clear
+        assert ptr.contents.periph.bk4819.fsk_rx_count == 0
+        assert link.read_register(0x02) & (1 << 14)  # ALMOST_EMPTY again
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_fsk_rx_finish_sets_flag_and_clears_on_read(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        lib.dp32g030_bk4819_fsk_rx_finish(ptr)
+        assert link.read_register(0x02) & (1 << 13)  # FSK_RX_FINISHED
+        assert not link.read_register(0x02) & (1 << 13)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
     ptr = new_cpu(lib)
     try:

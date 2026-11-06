@@ -277,6 +277,8 @@ typedef struct {
   bool ctcss_found, cdcss_found;
   uint16_t cdcss_low, cdcss_high; /* the two REG_08 halves, 12 bits each */
   bool vox_active;
+  uint16_t fsk_rx[8];    /* RX FIFO (REG_5F); depth is a guess (see README) */
+  unsigned fsk_rx_head, fsk_rx_count;
 } dp32g030_bk4819_t;
 
 /* Host callbacks. Any may be NULL. */
@@ -406,3 +408,14 @@ bool dp32g030_bk4819_signal_dtmf(dp32g030_cpu_t *c, char digit);
    hysteresis (no delay, unlike the real chip's REG_7A delay) when VOX
    is enabled (REG_31 bit 2); raises VOX_FOUND/LOST on REG_02. */
 void dp32g030_bk4819_set_mic_level(dp32g030_cpu_t *c, uint16_t amplitude);
+
+/* BK4819: push one 16-bit word of already-decoded FSK data (REG_5F's
+   RX FIFO), as if the chip had received it over the air. No-op (and
+   returns false) unless REG_59 has FSK RX enabled or the FIFO is
+   already full. Raises FSK_FIFO_ALMOST_FULL (REG_02) once the FIFO
+   holds 4 or more words, matching how much the real firmware drains
+   on that interrupt. */
+bool dp32g030_bk4819_fsk_rx_push(dp32g030_cpu_t *c, uint16_t word);
+/* BK4819: signal that the current FSK packet is complete, raising
+   FSK_RX_FINISHED (REG_02). Does not touch the FIFO itself. */
+void dp32g030_bk4819_fsk_rx_finish(dp32g030_cpu_t *c);

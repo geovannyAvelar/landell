@@ -287,6 +287,9 @@ class Bk4819(ctypes.Structure):
         ("cdcss_low", ctypes.c_uint16),
         ("cdcss_high", ctypes.c_uint16),
         ("vox_active", ctypes.c_bool),
+        ("fsk_rx", ctypes.c_uint16 * 8),
+        ("fsk_rx_head", ctypes.c_uint),
+        ("fsk_rx_count", ctypes.c_uint),
     ]
 
 
@@ -418,6 +421,9 @@ def load_lib(workdir):
     lib.dp32g030_bk4819_signal_dtmf.argtypes = [ctypes.POINTER(Cpu), ctypes.c_char]
     lib.dp32g030_bk4819_signal_dtmf.restype = ctypes.c_bool
     lib.dp32g030_bk4819_set_mic_level.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint16]
+    lib.dp32g030_bk4819_fsk_rx_push.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint16]
+    lib.dp32g030_bk4819_fsk_rx_push.restype = ctypes.c_bool
+    lib.dp32g030_bk4819_fsk_rx_finish.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,
