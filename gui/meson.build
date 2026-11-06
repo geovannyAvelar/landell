@@ -29,6 +29,15 @@ test('keypad',
   executable('test_keypad', files('test_keypad.cpp'),
     link_with : keypad_lib, dependencies : gui_deps,
     override_options : gui_opts))
+panel_lib = static_library('panel', files('panel.cpp', 'glyphs.cpp'),
+  link_with : keypad_lib,
+  dependencies : gui_deps,
+  override_options : gui_opts)
+
+test('panel',
+  executable('test_panel', files('test_panel.cpp'),
+    link_with : [panel_lib, keypad_lib], dependencies : gui_deps,
+    override_options : gui_opts))
 test('pacer',
   executable('test_pacer', files('test_pacer.cpp'),
     link_with : pacer_lib, override_options : gui_opts))
