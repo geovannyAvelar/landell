@@ -92,3 +92,10 @@ bool py32_gpio_read(dp32g030_cpu_t *c, unsigned port, uint32_t off,
                     unsigned size, uint32_t *out);
 bool py32_gpio_write(dp32g030_cpu_t *c, unsigned port, uint32_t off,
                      unsigned size, uint32_t val);
+
+/* PY32F071 SPI (py32_spi.c). `n` is the SPI number: 1 or 2. */
+bool py32_spi_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                   uint32_t *out);
+bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                    uint32_t val);
+void py32_spi_reset(dp32g030_cpu_t *c);

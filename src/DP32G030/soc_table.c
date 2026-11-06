@@ -13,6 +13,7 @@ const dp32g030_soc_t dp32g030_soc_dp32g030 = {
     .image_base = DP32G030_FLASH_BASE,
     .has_vtor = false,
     .region_find = dp32g030_mmio_find,
+    .lcd = {.spi = 0, .a0_port = 1, .a0_pin = 9},
     .gpio_set_input = dp32g030_gpio_set_input_dp32,
     .gpio_pins = dp32g030_gpio_pins_dp32,
 };

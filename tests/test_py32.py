@@ -251,3 +251,65 @@ def test_py32_gpio_port_f(pins):
     pins.put(BSRR, 1 << 8, GPIOF)
     assert pins.pins(PORT_F) & (1 << 8)
     assert not pins.pins(PORT_A) & (1 << 8)
+
+
+# ---- SPI + LCD tap ------------------------------------------------------
+
+SPI1 = 0x40013000
+SPI_CR1, SPI_CR2, SPI_SR, SPI_DR = 0x00, 0x04, 0x08, 0x0C
+CR1_MSTR, CR1_SPE = 1 << 2, 1 << 6
+SR_RXNE, SR_TXE = 1 << 0, 1 << 1
+
+
+def lcd_setup(lib, cpu):
+    """SPI1 enabled as master, PA6 (A0) output, display driven through DR."""
+    wr(lib, cpu, GPIOA + MODER, mode(6, 1))
+    wr(lib, cpu, SPI1 + SPI_CR1, CR1_MSTR | CR1_SPE)
+
+    def send(byte, data):
+        wr(lib, cpu, GPIOA + BSRR, (1 << 6) if data else (1 << 22))
+        wr(lib, cpu, SPI1 + SPI_DR, byte, 1)
+
+    return send
+
+
+def test_py32_spi_lcd_command_and_data(lib, py32):
+    cpu = py32(app_image())
+    send = lcd_setup(lib, cpu)
+    send(0xAF, data=False)  # display on
+    assert lib.dp32g030_lcd_is_on(cpu)
+    send(0xB1, data=False)  # page 1
+    send(0x00, data=False)  # column low nibble 0
+    send(0x10, data=False)  # column high nibble 0
+    send(0xFF, data=True)
+    assert lib.dp32g030_lcd_ram(cpu, 1, 0) == 0xFF
+    assert lib.dp32g030_lcd_ram(cpu, 0, 0) == 0
+
+
+def test_py32_spi_disabled_does_not_clock(lib, py32):
+    cpu = py32(app_image())
+    send = lcd_setup(lib, cpu)
+    wr(lib, cpu, SPI1 + SPI_CR1, CR1_MSTR)  # SPE off
+    send(0xAF, data=False)
+    assert not lib.dp32g030_lcd_is_on(cpu)
+
+
+def test_py32_spi_hook_and_status(lib, py32):
+    cpu = py32(app_image())
+    seen = []
+
+    def xfer(user, spi, tx):
+        seen.append((spi, tx))
+        return 0x5A
+
+    cb = emu.SPI_CB(xfer)
+    cpu.contents.periph.hooks.spi_xfer = cb
+    wr(lib, cpu, SPI1 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    assert rd(lib, cpu, SPI1 + SPI_SR)[1] & SR_TXE
+    assert not rd(lib, cpu, SPI1 + SPI_SR)[1] & SR_RXNE
+    wr(lib, cpu, SPI1 + SPI_DR, 0x12, 1)
+    assert seen == [(1, 0x12)]
+    sr = rd(lib, cpu, SPI1 + SPI_SR)[1]
+    assert sr & SR_TXE and sr & SR_RXNE
+    assert rd(lib, cpu, SPI1 + SPI_DR)[1] == 0x5A
+    assert not rd(lib, cpu, SPI1 + SPI_SR)[1] & SR_RXNE  # reading DR clears it

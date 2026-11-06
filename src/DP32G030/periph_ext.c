@@ -1,4 +1,5 @@
 #include "periph.h"
+#include "socdesc.h"
 
 #include "exc.h"
 
@@ -107,8 +108,9 @@ bool dp32g030_spi_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
       const dp32g030_hooks_t *h = &c->periph.hooks;
       uint8_t rx = h->spi_xfer ? h->spi_xfer(h->user, n, (uint8_t)val) : 0;
 
-      if (n == 0) {
-        bool a0 = (dp32g030_gpio_pins_dp32(c, 1) & (1u << 9)) != 0;
+      if (n == c->soc->lcd.spi) {
+        bool a0 = (c->soc->gpio_pins(c, c->soc->lcd.a0_port) &
+                   (1u << c->soc->lcd.a0_pin)) != 0;
 
         dp32g030_lcd_spi_byte(c, (uint8_t)val, a0);
       }

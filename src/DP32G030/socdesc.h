@@ -17,6 +17,12 @@ struct dp32g030_soc {
   const dp32g030_region_t *(*region_find)(uint32_t addr);
   /* Chip-specific power-on state, run at the end of dp32g030_cpu_reset. */
   void (*reset)(dp32g030_cpu_t *c);
+  /* The LCD controller sits on SPI number `spi` (as the hooks number them);
+     GPIO port `a0_port` (gpio_pins port index) pin `a0_pin` tells a command
+     byte (low) from pixel data (high). */
+  struct {
+    unsigned spi, a0_port, a0_pin;
+  } lcd;
   /* GPIO behind dp32g030_gpio_set_input / dp32g030_gpio_pins. */
   void (*gpio_set_input)(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
                          uint32_t value);

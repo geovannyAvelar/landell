@@ -365,10 +365,17 @@ typedef struct {
   uint32_t driven; /* 1 = dp32g030_gpio_set_input has driven this pin */
 } dp32g030_py32_gpio_t;
 
+typedef struct {
+  uint32_t cr1, cr2;
+  uint8_t rx;
+  bool rxne;
+} dp32g030_py32_spi_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
   dp32g030_py32_gpio_t gpio[PY32_NGPIO];
+  dp32g030_py32_spi_t spi[2]; /* SPI1, SPI2 */
 } dp32g030_py32_t;
 
 typedef struct {
