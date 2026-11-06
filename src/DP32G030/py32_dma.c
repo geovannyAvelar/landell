@@ -205,3 +205,8 @@ bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
   dma_update_irq(c);
   return true;
 }
+
+void py32_dma_request(dp32g030_cpu_t *c, unsigned req) {
+  (void)c;
+  (void)req;
+}

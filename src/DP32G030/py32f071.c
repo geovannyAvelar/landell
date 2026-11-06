@@ -103,6 +103,20 @@ static bool py32_dma_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   return py32_regfile_write(c, r, off, size, val);
 }
 
+static bool py32_tim_region_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                 uint32_t off, unsigned size, uint32_t *out) {
+  if (py32_tim_read(c, r->base == 0x40001400u ? 1u : 0u, off, size, out))
+    return true;
+  return py32_regfile_read(c, r, off, size, out);
+}
+
+static bool py32_tim_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                  uint32_t off, unsigned size, uint32_t val) {
+  if (py32_tim_write(c, r->base == 0x40001400u ? 1u : 0u, off, size, val))
+    return true;
+  return py32_regfile_write(c, r, off, size, val);
+}
+
 #define PY32_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_regfile_read, py32_regfile_write}
 #define PY32_SPI_REGION(n, b, irq_n) \
@@ -111,14 +125,16 @@ static bool py32_dma_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_adc_region_read, py32_adc_region_write}
 #define PY32_DMA_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_dma_region_read, py32_dma_region_write}
+#define PY32_TIM_REGION(n, b, irq_n) \
+  {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_tim_region_read, py32_tim_region_write}
 #define PY32_GPIO_REGION(n, b) \
   {#n, (b), PY32_REGION_SIZE, -1, -1, py32_gpio_region_read, py32_gpio_region_write}
 
 static const dp32g030_region_t py32f071_regions[] = {
     PY32_REGION(TIM2, 0x40000000u, 15),
     PY32_REGION(TIM3, 0x40000400u, 16),
-    PY32_REGION(TIM6, 0x40001000u, 17),
-    PY32_REGION(TIM7, 0x40001400u, 18),
+    PY32_TIM_REGION(TIM6, 0x40001000u, 17),
+    PY32_TIM_REGION(TIM7, 0x40001400u, 18),
     PY32_REGION(TIM14, 0x40002000u, 19),
     PY32_REGION(LCD, 0x40002400u, -1),
     PY32_REGION(RTC, 0x40002800u, 2),
@@ -197,6 +213,7 @@ static void py32_reset(dp32g030_cpu_t *c) {
   py32_spi_reset(c);
   py32_adc_reset(c);
   py32_dma_reset(c);
+  py32_tim_reset(c);
   if (idx >= 0)
     c->py32.regfile[idx][0] =
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
@@ -258,5 +275,7 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .gpio_dir = py32_gpio_dir,
     .extflash = {.present = true, .spi = 2, .cs_port = 0, .cs_pin = 3},
     .adc_set_input = py32_adc_set_input,
+    .tick = py32_tim_tick,
+    .next_event = py32_tim_next_event,
     .bk4819_drive_sda = py32_bk4819_drive_sda,
 };

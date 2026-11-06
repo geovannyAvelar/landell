@@ -789,3 +789,166 @@ def test_gpio_dir_dispatches_per_soc(lib, py32):
         assert lib.dp32g030_gpio_dir(dp, 2) == 0x24
     finally:
         lib.dp32g030_cpu_free(dp)
+
+
+# ---- basic timers TIM6 / TIM7 -------------------------------------------
+
+TIM7 = 0x40001400
+TIM6 = 0x40001000
+TIM_CR1, TIM_DIER, TIM_SR, TIM_EGR, TIM_CNT, TIM_PSC, TIM_ARR = 0x00, 0x0C, 0x10, 0x14, 0x24, 0x28, 0x2C
+CR1_CEN, CR1_UDIS, CR1_URS, CR1_OPM, CR1_ARPE = 1 << 0, 1 << 1, 1 << 2, 1 << 3, 1 << 7
+DIER_UIE, DIER_UDE = 1 << 0, 1 << 8
+SR_UIF = 1 << 0
+NO_EVENT = 2**64 - 1
+
+
+def advance(lib, cpu, cycles, chunk=1):
+    """Run the cycle-driven blocks for `cycles` core clocks, like cpu_run does."""
+    left = cycles
+    while left:
+        n = min(chunk, left)
+        cpu.contents.cycles += n
+        lib.dp32g030_soc_tick(cpu, n)
+        left -= n
+
+
+def tim(lib, cpu, off, base=TIM7):
+    return rd(lib, cpu, base + off)[1]
+
+
+def test_py32_tim7_counts_and_sets_uif(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 9)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 9)
+    assert tim(lib, cpu, TIM_CNT) == 9
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+    advance(lib, cpu, 1)  # CNT == ARR overflows to 0: update event
+    assert tim(lib, cpu, TIM_CNT) == 0
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+    wr(lib, cpu, TIM7 + TIM_SR, 0)  # UIF is cleared by writing 0
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+    advance(lib, cpu, 10)
+    assert tim(lib, cpu, TIM_SR) & SR_UIF  # the next period
+
+
+def test_py32_tim7_stopped_does_not_count(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 9)
+    advance(lib, cpu, 100)
+    assert tim(lib, cpu, TIM_CNT) == 0 and not tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_prescaler(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_PSC, 3)  # one count every 4 cycles
+    wr(lib, cpu, TIM7 + TIM_ARR, 1)  # period (1+1)*(3+1) = 8 cycles
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 7)
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+    advance(lib, cpu, 1)
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_big_steps_match_single_cycles(lib, py32):
+    a, b = py32(app_image()), py32(app_image())
+    for cpu in (a, b):
+        wr(lib, cpu, TIM7 + TIM_ARR, 374)
+        wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, a, 10_000, chunk=1)
+    advance(lib, b, 10_000, chunk=10_000)  # a WFI skip is one big tick
+    assert tim(lib, a, TIM_CNT) == tim(lib, b, TIM_CNT) == 10_000 % 375
+
+
+def test_py32_tim7_interrupt_line(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 4)
+    wr(lib, cpu, TIM7 + TIM_DIER, DIER_UIE)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    assert not irq_line(cpu, 18)
+    advance(lib, cpu, 5)
+    assert irq_line(cpu, 18)  # TIM7 global interrupt
+    wr(lib, cpu, TIM7 + TIM_SR, 0)
+    assert not irq_line(cpu, 18)
+
+
+def test_py32_tim6_uses_its_own_irq_and_registers(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM6 + TIM_ARR, 2)
+    wr(lib, cpu, TIM6 + TIM_DIER, DIER_UIE)
+    wr(lib, cpu, TIM6 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 3)
+    assert irq_line(cpu, 17)  # TIM6 / LPTIM1 / DAC
+    assert tim(lib, cpu, TIM_SR, TIM6) & SR_UIF
+    assert tim(lib, cpu, TIM_SR, TIM7) == 0  # TIM7 is a different timer
+
+
+def test_py32_tim7_arr_preload(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 9)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN | CR1_ARPE)
+    advance(lib, cpu, 5)
+    wr(lib, cpu, TIM7 + TIM_ARR, 2)  # takes effect at the next update
+    advance(lib, cpu, 5)  # first update at cycle 10 with the old period
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+    wr(lib, cpu, TIM7 + TIM_SR, 0)
+    advance(lib, cpu, 2)
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+    advance(lib, cpu, 1)  # new period: 3 cycles
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_arr_without_preload_applies_at_once(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 100)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 5)
+    wr(lib, cpu, TIM7 + TIM_ARR, 7)
+    advance(lib, cpu, 3)
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_ug_reloads_and_urs_masks_the_flag(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 50)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    advance(lib, cpu, 20)
+    wr(lib, cpu, TIM7 + TIM_EGR, 1)  # UG
+    assert tim(lib, cpu, TIM_CNT) == 0
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+    wr(lib, cpu, TIM7 + TIM_SR, 0)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN | CR1_URS)
+    wr(lib, cpu, TIM7 + TIM_EGR, 1)
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF  # URS: UG alone does not flag
+
+
+def test_py32_tim7_one_pulse_stops_at_the_update(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 4)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN | CR1_OPM)
+    advance(lib, cpu, 5)
+    assert tim(lib, cpu, TIM_SR) & SR_UIF
+    assert not tim(lib, cpu, TIM_CR1) & CR1_CEN
+    wr(lib, cpu, TIM7 + TIM_SR, 0)
+    advance(lib, cpu, 20)
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_udis_blocks_updates(lib, py32):
+    cpu = py32(app_image())
+    wr(lib, cpu, TIM7 + TIM_ARR, 4)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN | CR1_UDIS)
+    advance(lib, cpu, 20)
+    assert not tim(lib, cpu, TIM_SR) & SR_UIF
+
+
+def test_py32_tim7_next_event_for_wfi(lib, py32):
+    cpu = py32(app_image())
+    assert lib.dp32g030_soc_next_event(cpu) == NO_EVENT
+    wr(lib, cpu, TIM7 + TIM_ARR, 99)
+    wr(lib, cpu, TIM7 + TIM_CR1, CR1_CEN)
+    assert lib.dp32g030_soc_next_event(cpu) == NO_EVENT  # nobody listens
+    wr(lib, cpu, TIM7 + TIM_DIER, DIER_UIE)
+    assert lib.dp32g030_soc_next_event(cpu) == 100
+    advance(lib, cpu, 30)
+    assert lib.dp32g030_soc_next_event(cpu) == 70

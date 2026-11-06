@@ -1,6 +1,7 @@
 #include "soc.h"
 
 #include "periph.h"
+#include "socdesc.h"
 
 #include <stdint.h>
 
@@ -67,6 +68,8 @@ void dp32g030_soc_tick(dp32g030_cpu_t *c, uint64_t cycles) {
   dp32g030_uart_tick(c);
   dp32g030_timer_pwm_tick(c, cycles);
   dp32g030_rtc_wdt_tick(c, cycles);
+  if (c->soc->tick)
+    c->soc->tick(c, cycles);
 }
 
 uint64_t dp32g030_soc_next_event(const dp32g030_cpu_t *c) {
@@ -79,5 +82,13 @@ uint64_t dp32g030_soc_next_event(const dp32g030_cpu_t *c) {
     a = b;
   if (d < a)
     a = d;
-  return e < a ? e : a;
+  if (e < a)
+    a = e;
+  if (c->soc->next_event) {
+    uint64_t f = c->soc->next_event(c);
+
+    if (f < a)
+      a = f;
+  }
+  return a;
 }

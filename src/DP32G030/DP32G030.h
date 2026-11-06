@@ -403,12 +403,21 @@ typedef struct {
   uint32_t addr;
 } dp32g030_extflash_t;
 
+/* Basic timer (TIM6, TIM7): up counter with prescaler, update event only. */
+typedef struct {
+  uint32_t cr1, dier, sr, psc, arr;
+  uint32_t cnt;
+  uint32_t arr_shadow; /* the reload value in use (differs with ARPE) */
+  uint32_t presc_cnt;  /* core clocks into the current prescaler count */
+} dp32g030_py32_tim_t;
+
 /* PY32F071 peripheral state (see py32f071.c). */
 typedef struct {
   uint32_t regfile[PY32_NREGIONS][PY32_REGFILE_WORDS];
   dp32g030_py32_gpio_t gpio[PY32_NGPIO];
   dp32g030_py32_spi_t spi[2]; /* SPI1, SPI2 */
   dp32g030_py32_adc_t adc;
+  dp32g030_py32_tim_t tim[2]; /* TIM6, TIM7 */
   dp32g030_py32_dma_t dma;
 } dp32g030_py32_t;
 

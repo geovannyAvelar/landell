@@ -19,6 +19,11 @@ struct dp32g030_soc {
   bool (*accepts_image)(const uint8_t *fw, size_t size);
   /* What image this chip loads, for error messages. */
   const char *image_hint;
+  /* Cycle-driven peripherals beyond the DP32G030 ones (NULL = none): advance by
+     `cycles` core clocks / core clocks until the next event that can raise an
+     interrupt or a DMA request. */
+  void (*tick)(dp32g030_cpu_t *c, uint64_t cycles);
+  uint64_t (*next_event)(const dp32g030_cpu_t *c);
   /* Board presets, see dp32g030_soc_defaults. */
   void (*defaults)(dp32g030_cpu_t *c);
   /* Chip-specific power-on state, run at the end of dp32g030_cpu_reset. */

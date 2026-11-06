@@ -138,3 +138,14 @@ bool py32_image_ok(const uint8_t *fw, size_t size);
 
 uint32_t dp32g030_gpio_dir_dp32(const dp32g030_cpu_t *c, unsigned port);
 uint32_t py32_gpio_dir(const dp32g030_cpu_t *c, unsigned port);
+
+/* PY32F071 basic timers (py32_tim.c). `n` is 0 for TIM6, 1 for TIM7. */
+bool py32_tim_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                   uint32_t *out);
+bool py32_tim_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                    uint32_t val);
+void py32_tim_reset(dp32g030_cpu_t *c);
+void py32_tim_tick(dp32g030_cpu_t *c, uint64_t cycles);
+uint64_t py32_tim_next_event(const dp32g030_cpu_t *c);
+/* A peripheral raised DMA request `req` (the values of SYSCFG's DMA map). */
+void py32_dma_request(dp32g030_cpu_t *c, unsigned req);
