@@ -183,6 +183,100 @@ def test_set_signal_reports_rssi_glitch_noise(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_ctcss_tone_match_sets_found(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x07, 2065)  # CTC1 mode, ~100.0 Hz
+        assert not link.read_register(0x02) & (1 << 7)
+        lib.dp32g030_bk4819_set_ctcss_tone(ptr, 1000)  # 100.0 Hz
+        assert link.read_register(0x02) & (1 << 7)  # CTCSS_FOUND
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_ctcss_mismatch_does_not_set_found(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x07, 2065)  # ~100.0 Hz
+        lib.dp32g030_bk4819_set_ctcss_tone(ptr, 1500)  # 150.0 Hz: way off
+        assert not link.read_register(0x02) & (1 << 7)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_ctcss_lost_when_tone_disappears(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x07, 2065)
+        lib.dp32g030_bk4819_set_ctcss_tone(ptr, 1000)
+        assert link.read_register(0x02) & (1 << 7)
+        lib.dp32g030_bk4819_set_ctcss_tone(ptr, 0)
+        assert link.read_register(0x02) & (1 << 6)  # CTCSS_LOST
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_cdcss_match_sets_found(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        code = 0x1A2B3C
+        link.write_register(0x07, 2 << 13)  # CDCSS mode
+        link.write_register(0x08, code & 0xFFF)  # low 12 bits
+        link.write_register(0x08, 0x8000 | ((code >> 12) & 0xFFF))  # high 12 bits
+        lib.dp32g030_bk4819_set_cdcss_code(ptr, code, True)
+        assert link.read_register(0x02) & (1 << 9)  # CDCSS_FOUND
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_cdcss_mismatch_does_not_set_found(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        code = 0x1A2B3C
+        link.write_register(0x07, 2 << 13)
+        link.write_register(0x08, code & 0xFFF)
+        link.write_register(0x08, 0x8000 | ((code >> 12) & 0xFFF))
+        lib.dp32g030_bk4819_set_cdcss_code(ptr, code ^ 1, True)  # one bit off
+        assert not link.read_register(0x02) & (1 << 9)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_cdcss_requires_cdcss_mode(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        code = 0x1A2B3C
+        link.write_register(0x07, 0)  # CTC1 mode, not CDCSS
+        link.write_register(0x08, code & 0xFFF)
+        link.write_register(0x08, 0x8000 | ((code >> 12) & 0xFFF))
+        lib.dp32g030_bk4819_set_cdcss_code(ptr, code, True)
+        assert not link.read_register(0x02) & (1 << 9)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_cdcss_lost_when_signal_disappears(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        code = 0x1A2B3C
+        link.write_register(0x07, 2 << 13)
+        link.write_register(0x08, code & 0xFFF)
+        link.write_register(0x08, 0x8000 | ((code >> 12) & 0xFFF))
+        lib.dp32g030_bk4819_set_cdcss_code(ptr, code, True)
+        assert link.read_register(0x02) & (1 << 9)
+        lib.dp32g030_bk4819_set_cdcss_code(ptr, code, False)
+        assert link.read_register(0x02) & (1 << 8)  # CDCSS_LOST
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
     ptr = new_cpu(lib)
     try:

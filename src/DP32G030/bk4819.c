@@ -10,6 +10,17 @@
 
 #define REG_02_SQUELCH_LOST (1u << 2)
 #define REG_02_SQUELCH_FOUND (1u << 3)
+#define REG_02_CTCSS_LOST (1u << 6)
+#define REG_02_CTCSS_FOUND (1u << 7)
+#define REG_02_CDCSS_LOST (1u << 8)
+#define REG_02_CDCSS_FOUND (1u << 9)
+
+#define REG_07_MODE_SHIFT 13
+#define REG_07_MODE_CTC1 0u
+#define REG_07_MODE_CDCSS 2u
+#define REG_07_FREQ_MASK 0x1FFFu
+
+#define REG_51_CDCSS_24BIT (1u << 11)
 
 static void bk4819_reset_transaction(dp32g030_bk4819_t *b) {
   b->selected = false;
@@ -34,6 +45,45 @@ static void bk4819_update_squelch(dp32g030_cpu_t *c) {
   b->regs[0x02] |= now_open ? REG_02_SQUELCH_FOUND : REG_02_SQUELCH_LOST;
 }
 
+/* Inverse of the firmware's control_word = round(freq_Hz * 20.64888);
+   returns freq in 0.1 Hz units, rounded. */
+static uint32_t ctc1_word_to_tenth_hz(uint16_t word) {
+  return ((uint32_t)word * 100000u + 103244u) / 206488u;
+}
+
+static void bk4819_update_ctcss(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  unsigned mode = (b->regs[0x07] >> REG_07_MODE_SHIFT) & 7u;
+  bool found = false;
+
+  if (mode == REG_07_MODE_CTC1 && b->ctcss_tone_in != 0) {
+    uint32_t target = ctc1_word_to_tenth_hz(b->regs[0x07] & REG_07_FREQ_MASK);
+    uint32_t diff = target > b->ctcss_tone_in ? target - b->ctcss_tone_in
+                                              : b->ctcss_tone_in - target;
+
+    found = diff <= 10; /* +/- 1 Hz tolerance for the rounding above */
+  }
+  if (found == b->ctcss_found)
+    return;
+  b->ctcss_found = found;
+  b->regs[0x02] |= found ? REG_02_CTCSS_FOUND : REG_02_CTCSS_LOST;
+}
+
+static void bk4819_update_cdcss(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  unsigned mode = (b->regs[0x07] >> REG_07_MODE_SHIFT) & 7u;
+  uint32_t mask = (b->regs[0x51] & REG_51_CDCSS_24BIT) ? 0xFFFFFFu : 0x7FFFFFu;
+  uint32_t configured = b->cdcss_low | ((uint32_t)b->cdcss_high << 12);
+  bool found = false;
+
+  if (mode == REG_07_MODE_CDCSS && b->cdcss_present_in)
+    found = (configured & mask) == (b->cdcss_code_in & mask);
+  if (found == b->cdcss_found)
+    return;
+  b->cdcss_found = found;
+  b->regs[0x02] |= found ? REG_02_CDCSS_FOUND : REG_02_CDCSS_LOST;
+}
+
 /* Apply side effects for a register that was just written by the host
    protocol (address `addr`, 16-bit value already stored in regs[addr]). */
 static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
@@ -50,6 +100,20 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
   }
   case 0x78:
     bk4819_update_squelch(c);
+    break;
+  case 0x07:
+    bk4819_update_ctcss(c);
+    bk4819_update_cdcss(c);
+    break;
+  case 0x08:
+    if (b->regs[0x08] & 0x8000u)
+      b->cdcss_high = b->regs[0x08] & 0x0FFFu;
+    else
+      b->cdcss_low = b->regs[0x08] & 0x0FFFu;
+    bk4819_update_cdcss(c);
+    break;
+  case 0x51:
+    bk4819_update_cdcss(c);
     break;
   default:
     break;
@@ -147,4 +211,18 @@ uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c) {
 
 bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c) {
   return c->periph.bk4819.squelch_open;
+}
+
+void dp32g030_bk4819_set_ctcss_tone(dp32g030_cpu_t *c, uint32_t tenth_hz) {
+  c->periph.bk4819.ctcss_tone_in = tenth_hz;
+  bk4819_update_ctcss(c);
+}
+
+void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
+                                    bool present) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+
+  b->cdcss_code_in = code;
+  b->cdcss_present_in = present;
+  bk4819_update_cdcss(c);
 }

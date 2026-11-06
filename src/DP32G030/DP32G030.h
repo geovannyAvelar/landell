@@ -271,6 +271,11 @@ typedef struct {
   uint8_t addr;
   uint16_t shift;
   bool squelch_open;
+  uint32_t ctcss_tone_in;  /* host-provided received CTCSS tone, 0.1 Hz/LSB; 0 = none */
+  uint32_t cdcss_code_in;  /* host-provided received CDCSS code (23/24-bit) */
+  bool cdcss_present_in;   /* whether a CDCSS signal is being received at all */
+  bool ctcss_found, cdcss_found;
+  uint16_t cdcss_low, cdcss_high; /* the two REG_08 halves, 12 bits each */
 } dp32g030_bk4819_t;
 
 /* Host callbacks. Any may be NULL. */
@@ -374,3 +379,14 @@ void dp32g030_bk4819_set_signal(dp32g030_cpu_t *c, uint16_t rssi,
 uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c);
 /* Whether the RSSI-threshold squelch is currently open. */
 bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c);
+
+/* BK4819: set the simulated received CTCSS tone (0.1 Hz/LSB; 0 = no
+   tone present). Compared against REG_07's CTC1 frequency with a
+   +/-1 Hz tolerance; mismatched/no tone raises CTCSS_LOST, a match
+   raises CTCSS_FOUND (REG_02). */
+void dp32g030_bk4819_set_ctcss_tone(dp32g030_cpu_t *c, uint32_t tenth_hz);
+/* BK4819: set the simulated received CDCSS code and whether a CDCSS
+   signal is present at all. Compared against the 23/24-bit code
+   assembled from REG_08; CDCSS_FOUND/LOST raised on REG_02 as above. */
+void dp32g030_bk4819_set_cdcss_code(dp32g030_cpu_t *c, uint32_t code,
+                                    bool present);

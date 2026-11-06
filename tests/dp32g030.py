@@ -278,6 +278,13 @@ class Bk4819(ctypes.Structure):
         ("addr", ctypes.c_uint8),
         ("shift", ctypes.c_uint16),
         ("squelch_open", ctypes.c_bool),
+        ("ctcss_tone_in", ctypes.c_uint32),
+        ("cdcss_code_in", ctypes.c_uint32),
+        ("cdcss_present_in", ctypes.c_bool),
+        ("ctcss_found", ctypes.c_bool),
+        ("cdcss_found", ctypes.c_bool),
+        ("cdcss_low", ctypes.c_uint16),
+        ("cdcss_high", ctypes.c_uint16),
     ]
 
 
@@ -401,6 +408,10 @@ def load_lib(workdir):
     lib.dp32g030_bk4819_frequency.restype = ctypes.c_uint32
     lib.dp32g030_bk4819_squelch_open.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_bk4819_squelch_open.restype = ctypes.c_bool
+    lib.dp32g030_bk4819_set_ctcss_tone.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint32]
+    lib.dp32g030_bk4819_set_cdcss_code.argtypes = [
+        ctypes.POINTER(Cpu), ctypes.c_uint32, ctypes.c_bool,
+    ]
     lib.dp32g030_bus_read.argtypes = [
         ctypes.POINTER(Cpu),
         ctypes.c_uint32,
