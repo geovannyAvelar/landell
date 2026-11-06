@@ -130,6 +130,9 @@ typedef struct {
   uint32_t out; /* DATA register as written */
   uint32_t dir; /* 1 = output */
   uint32_t in;  /* levels driven from outside on input pins */
+  uint32_t driven; /* 1 = dp32g030_gpio_set_input has driven this pin at
+                      least once; until then, an input pin floats to
+                      PORTCON's pull-up/pull-down configuration, if any */
 } dp32g030_gpio_t;
 
 typedef struct {

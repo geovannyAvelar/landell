@@ -9,13 +9,16 @@ void dp32g030_periph_reset(dp32g030_cpu_t *c) {
   dp32g030_hooks_t hooks = p->hooks;
   uint32_t adc_in[DP32G030_ADC_CHANNELS];
   uint32_t in[3] = {p->gpio[0].in, p->gpio[1].in, p->gpio[2].in};
+  uint32_t driven[3] = {p->gpio[0].driven, p->gpio[1].driven, p->gpio[2].driven};
 
   memcpy(adc_in, p->adc.input, sizeof adc_in);
   memset(p, 0, sizeof *p);
   memcpy(p->adc.input, adc_in, sizeof adc_in);
   p->hooks = hooks;
-  for (unsigned i = 0; i < 3; i++)
+  for (unsigned i = 0; i < 3; i++) {
     p->gpio[i].in = in[i];
+    p->gpio[i].driven = driven[i];
+  }
   for (unsigned i = 0; i < 3; i++) {
     p->timer_base[i].high_load = 0xFFFFu;
     p->timer_base[i].low_load = 0xFFFFu;
@@ -88,10 +91,26 @@ static unsigned dp32g030_gpio_port(const dp32g030_region_t *r) {
   return (unsigned)(r->base - 0x40060000u) / DP32G030_MMIO_REGION_SIZE;
 }
 
+/* PORTCON's PORTx_PU pull-up-enable word for `port` (0=A,1=B,2=C), read
+   from its generic register-file storage; 0 if PORTCON isn't mapped. */
+static uint32_t dp32g030_portcon_pullup(const dp32g030_cpu_t *c, unsigned port) {
+  const dp32g030_region_t *r = dp32g030_mmio_find(0x400B0000u);
+  int idx = r ? dp32g030_mmio_index(r) : -1;
+
+  if (idx < 0)
+    return 0;
+  return c->periph.regfile[idx][(0x200 + 4 * port) / 4];
+}
+
 uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port) {
   const dp32g030_gpio_t *g = &c->periph.gpio[port];
+  uint32_t level = (g->out & g->dir) | (g->in & ~g->dir);
+  /* An input pin nothing has ever driven floats to its pull-up, if any
+     (PORTCON has no behaviour of its own otherwise; see README). A
+     pull-down needs no extra handling: that is already the default. */
+  uint32_t floating = ~g->dir & ~g->driven;
 
-  return (g->out & g->dir) | (g->in & ~g->dir);
+  return level | (dp32g030_portcon_pullup(c, port) & floating);
 }
 
 static void dp32g030_gpio_notify(dp32g030_cpu_t *c, unsigned port,
@@ -112,6 +131,7 @@ void dp32g030_gpio_set_input(dp32g030_cpu_t *c, unsigned port, uint32_t mask,
   g = &c->periph.gpio[port];
   uint32_t before = dp32g030_gpio_pins(c, port);
   g->in = (g->in & ~mask) | (value & mask);
+  g->driven |= mask;
   dp32g030_gpio_notify(c, port, before);
 }
 

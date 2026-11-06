@@ -58,6 +58,46 @@ def test_gpio_hook_reports_pin_changes(lib):
     assert events[-1] == (0, 0x5, 0xF)
 
 
+def test_gpio_floats_to_portcon_pullup(lib):
+    def setup(ptr):
+        lib.dp32g030_bus_write(ptr, PORTCON + 0x200, 4, 1 << 4)  # PORTA_PU, pin4
+
+    res = go(lib, [ldr(3, 0, 0), BKPT], regs={0: GPIOA}, setup=setup)
+    assert res.r[3] & 0x10  # pin4 floats high: pulled up, never driven
+
+
+def test_gpio_host_drive_overrides_pullup(lib):
+    def setup(ptr):
+        lib.dp32g030_bus_write(ptr, PORTCON + 0x200, 4, 1 << 4)
+        lib.dp32g030_gpio_set_input(ptr, 0, 1 << 4, 0)  # something drives it low
+
+    res = go(lib, [ldr(3, 0, 0), BKPT], regs={0: GPIOA}, setup=setup)
+    assert not res.r[3] & 0x10
+
+
+def test_gpio_pullup_does_not_affect_output_pins(lib):
+    def setup(ptr):
+        lib.dp32g030_bus_write(ptr, PORTCON + 0x200, 4, 1 << 4)  # pin4 pull-up
+
+    main = [STR_R1_R0_4, STR_R2_R0_0, ldr(3, 0, 0), BKPT]
+    # pin4 is also configured as an output driving 0: the pull-up must not
+    # override an actively driven output pin.
+    res = go(lib, main, regs={0: GPIOA, 1: 0x10, 2: 0x00}, setup=setup)
+    assert not res.r[3] & 0x10
+
+
+def test_gpio_pullup_resets_with_portcon_but_driven_state_persists(lib):
+    def setup(ptr):
+        lib.dp32g030_bus_write(ptr, PORTCON + 0x200, 4, 1 << 4)  # pin4 pull-up
+        lib.dp32g030_gpio_set_input(ptr, 0, 1 << 5, 1 << 5)  # pin5 held high
+        lib.dp32g030_cpu_reset(ptr)
+        ptr.contents.r[0] = GPIOA  # cpu_reset() clears the general registers
+
+    res = go(lib, [ldr(3, 0, 0), BKPT], regs={0: GPIOA}, setup=setup)
+    assert not res.r[3] & 0x10  # PORTCON reset too: no more pull-up
+    assert res.r[3] & 0x20  # but the externally-held pin is unaffected
+
+
 def test_gpio_rejects_byte_access(lib):
     res = go(lib, [0x7803, BKPT], regs={0: GPIOA})
     assert res.halted and res.locked_up

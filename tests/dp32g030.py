@@ -72,7 +72,12 @@ GPIO_CB = ctypes.CFUNCTYPE(
 
 
 class Gpio(ctypes.Structure):
-    _fields_ = [("out", ctypes.c_uint32), ("dir", ctypes.c_uint32), ("in_", ctypes.c_uint32)]
+    _fields_ = [
+        ("out", ctypes.c_uint32),
+        ("dir", ctypes.c_uint32),
+        ("in_", ctypes.c_uint32),
+        ("driven", ctypes.c_uint32),
+    ]
 
 
 class Uart(ctypes.Structure):
