@@ -123,3 +123,28 @@ src/DP32G030/            SoC: decode, exec, bus, exceptions, SCS, timing, periph
 tests/                   pytest suite, run through meson
 firmware/                example firmware
 ```
+
+## GUI
+
+`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Display only: no keys, EEPROM or audio yet.
+
+Needs SDL2 and a Skia build. `scripts/build-skia.sh` clones depot_tools and Skia (branch pinned in the script) and builds a static, raster-only `libskia.a` in `~/skia` (set `SKIA_DIR` to change it). It takes a while and several GB.
+
+```sh
+scripts/build-skia.sh
+meson setup build-gui -Dgui=enabled -Dskia_dir=$HOME/skia -Dbuildtype=debugoptimized
+meson compile -C build-gui
+build-gui/gui/landell-gui firmware.bin
+```
+
+```sh
+landell-gui [--scale N] [--adc CH=VAL] [--screenshot out.png [--steps N]] firmware.bin
+```
+
+- `--scale N`: window pixels per LCD pixel, 1-16 (default 6).
+- `--adc CH=VAL`: set a SARADC channel (repeatable). Channel 9 (battery) defaults to 2000, otherwise the firmware shows no UI.
+- `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
+- Escape or closing the window quits.
+
+Real-time pacing assumes 48 MHz. Use an optimized build; if the emulator cannot keep up it prints a warning and runs slower than real time. Without `-Dgui=enabled` the build is unchanged.
+
