@@ -73,6 +73,7 @@ Model limits:
 - The Cortex-M0 has no VTOR here, so the vector table stays at address 0.
 - UART timing is approximate: the RX timeout uses `10 * (BAUD + 1)` core clocks per character.
 - `SysTick CALIB` reads as 0.
+- GPIO has no pull-up/pull-down modeling: an input pin the host never drives reads as 0 (floating), not whatever level a real board's resistor would hold it at. Real firmware that reads a button or a keypad matrix directly off GPIO (not through a peripheral) will see every such input as "pressed" unless the host calls `dp32g030_gpio_set_input()` to hold it at its idle level first. On the UV-K5 this bites real firmware during boot: the PTT pin (GPIOC bit 5) and the keypad's 4 column pins (GPIOA bits 3-6) both need to be driven high before firmware's own "release all keys" boot gate will pass.
 
 ## Build
 
