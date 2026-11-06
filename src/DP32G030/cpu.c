@@ -49,6 +49,8 @@ dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
                                      const uint8_t *fw, size_t size) {
   if (!soc || !fw || size < 8)
     return NULL;
+  if (soc->accepts_image && !soc->accepts_image(fw, size))
+    return NULL;
 
   uint32_t offset = soc->image_base - soc->flash_base;
   if (size > soc->flash_size - offset)
@@ -72,7 +74,7 @@ dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
 }
 
 dp32g030_cpu_t *dp32g030_cpu_new(const uint8_t *fw, size_t size) {
-  return dp32g030_cpu_new_soc(&dp32g030_soc_dp32g030, fw, size);
+  return dp32g030_cpu_new_soc(dp32g030_soc_detect(fw, size), fw, size);
 }
 
 /* Fetch one instruction. Returns false on a bus error. */

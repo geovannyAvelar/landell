@@ -41,12 +41,13 @@ static void lcd_render(const dp32g030_cpu_t *c) {
 
 static void usage(FILE *out, const char *prog) {
   fprintf(out,
-          "usage: %s [-s steps] [-u uart] [-a ch=val] [-l] firmware.bin\n"
+          "usage: %s [-s steps] [-u uart] [-a ch=val] [--soc chip] [-l] firmware.bin\n"
           "\n"
           "  -s, --steps N  maximum instructions to execute (default %llu)\n"
           "  -u, --uart N   print bytes sent by UART N (0-2) to stdout\n"
           "  -a, --adc CH=V set SARADC channel CH (0-15) to 12-bit value V; "
           "repeatable\n"
+          "      --soc CHIP set the chip: auto (default), dp32g030 or py32f071\n"
           "  -l, --lcd      print the LCD contents after the run\n"
           "  -h, --help     show this help\n"
           "\n"
@@ -87,6 +88,7 @@ int main(int argc, char **argv) {
   const char *path = NULL;
   size_t steps = (size_t)DEFAULT_STEPS;
   bool show_lcd = false;
+  const char *soc_name = "auto";
   unsigned adc_ch[16], adc_val[16], adc_n = 0;
 
   for (int i = 1; i < argc; i++) {
@@ -123,6 +125,14 @@ int main(int argc, char **argv) {
       }
       adc_ch[adc_n] = (unsigned)ch;
       adc_val[adc_n++] = (unsigned)val;
+      continue;
+    }
+    if (!strcmp(arg, "--soc")) {
+      if (++i >= argc) {
+        fprintf(stderr, "%s: --soc needs a chip name\n", prog);
+        return EXIT_USAGE;
+      }
+      soc_name = argv[i];
       continue;
     }
     if (!strcmp(arg, "-l") || !strcmp(arg, "--lcd")) {
@@ -163,11 +173,24 @@ int main(int argc, char **argv) {
     return EXIT_USAGE;
   }
 
-  dp32g030_cpu_t *cpu = dp32g030_cpu_new(fw, size);
+  const dp32g030_soc_t *soc;
+  if (!strcmp(soc_name, "auto")) {
+    soc = dp32g030_soc_detect(fw, size);
+  } else {
+    soc = dp32g030_soc_by_name(soc_name);
+    if (!soc) {
+      fprintf(stderr, "%s: unknown --soc '%s' (auto, dp32g030, py32f071)\n",
+              prog, soc_name);
+      free(fw);
+      return EXIT_USAGE;
+    }
+  }
+
+  dp32g030_cpu_t *cpu = dp32g030_cpu_new_soc(soc, fw, size);
   free(fw);
   if (!cpu) {
-    fprintf(stderr, "%s: '%s' is not a valid image (%zu bytes, need 8..%d)\n",
-            prog, path, size, DP32G030_FLASH_SIZE);
+    fprintf(stderr, "%s: '%s' is not a valid image for %s (%zu bytes)\n", prog,
+            path, dp32g030_soc_name(soc), size);
     return EXIT_USAGE;
   }
 

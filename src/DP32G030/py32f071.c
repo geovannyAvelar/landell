@@ -202,6 +202,29 @@ static void py32_reset(dp32g030_cpu_t *c) {
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
 }
 
+/* The reset vector of an app image points into the chip's flash window. */
+bool py32_image_ok(const uint8_t *fw, size_t size) {
+  if (size < 8)
+    return false;
+  uint32_t reset = (uint32_t)fw[4] | (uint32_t)fw[5] << 8 |
+                   (uint32_t)fw[6] << 16 | (uint32_t)fw[7] << 24;
+
+  return reset >= 0x08000000u && reset < 0x08000000u + 128 * 1024;
+}
+
+/* UV-K5 V3 / UV-K1: the battery is on ADC channel 8, and the settings and
+   calibration live in the external flash. The firmware divides by
+   gBatteryCalibration[3] (flash 0x010146), so an erased calibration reads as a
+   dead battery: preset a factory-style block (1900, 2000, 2300, 2000, 2000,
+   2300) at flash 0x010140. */
+static void py32_defaults(dp32g030_cpu_t *c) {
+  static const uint8_t calibration[12] = {0x6C, 0x07, 0xD0, 0x07, 0xFC, 0x08,
+                                          0xD0, 0x07, 0xD0, 0x07, 0xFC, 0x08};
+
+  py32_adc_set_input(c, 8, 2000);
+  dp32g030_extflash_set(c, 0x010140u, calibration, sizeof calibration);
+}
+
 const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .name = "py32f071",
     .flash_base = 0x08000000u,
@@ -213,6 +236,8 @@ const dp32g030_soc_t dp32g030_soc_py32f071 = {
     .image_base = 0x08002800u,
     .has_vtor = true,
     .region_find = py32_region_find,
+    .accepts_image = py32_image_ok,
+    .defaults = py32_defaults,
     .reset = py32_reset,
     .lcd = {.spi = 1, .a0_port = 0, .a0_pin = 6},
     .gpio_set_input = py32_gpio_set_input,

@@ -130,3 +130,6 @@ void dp32g030_extflash_reset_bus(dp32g030_cpu_t *c);
 /* Call after any write that can change the chip-select pin. */
 void dp32g030_extflash_cs(dp32g030_cpu_t *c);
 uint8_t dp32g030_extflash_xfer(dp32g030_cpu_t *c, uint8_t tx);
+
+/* PY32F071 image check shared with chip detection (py32f071.c). */
+bool py32_image_ok(const uint8_t *fw, size_t size);

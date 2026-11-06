@@ -452,8 +452,18 @@ void dp32g030_extflash_get(const dp32g030_cpu_t *c, uint32_t offset,
 
 /* Looks a chip up by name ("dp32g030"); NULL if unknown. */
 const dp32g030_soc_t *dp32g030_soc_by_name(const char *name);
+/* Picks the chip an image is for from its reset vector (the second word): an
+   address inside the PY32F071 flash window selects "py32f071", anything else
+   (or an image shorter than 8 bytes) "dp32g030". */
+const dp32g030_soc_t *dp32g030_soc_detect(const uint8_t *fw, size_t size);
+const char *dp32g030_soc_name(const dp32g030_soc_t *soc);
+/* Presets that make the firmware of the chip's radio boot to its normal UI:
+   a sane battery level on the ADC and, where the firmware keeps calibration in
+   an external flash, a factory-style calibration block. Host-set values made
+   afterwards (dp32g030_adc_set_input, ...) override them. */
+void dp32g030_soc_defaults(dp32g030_cpu_t *c);
 /* Loads `fw` at the chip's image base. NULL if it is too small (< 8 bytes) or
-   does not fit in the chip's flash. */
+   does not fit in the chip's flash, or is not an image for this chip. */
 dp32g030_cpu_t *dp32g030_cpu_new_soc(const dp32g030_soc_t *soc,
                                      const uint8_t *fw, size_t size);
 /* Same, with the chip chosen by dp32g030_soc_by_name's default (dp32g030). */

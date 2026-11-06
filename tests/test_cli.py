@@ -180,3 +180,30 @@ def test_uart_option_echoes_tx(tmp_path):
 def test_uart_option_rejects_bad_index(image):
     fw = image([emu.BKPT])
     assert landell("-u", 3, fw).returncode == 1
+
+
+def test_soc_option_rejects_unknown_chip(image):
+    res = landell("--soc", "bogus", image([0x2001]))
+    assert res.returncode == 1
+    assert "soc" in res.stderr
+
+
+def test_soc_py32f071_rejects_a_dp32g030_image(image):
+    res = landell("--soc", "py32f071", image([0x2001]))
+    assert res.returncode == 1
+    assert "py32f071" in res.stderr
+
+
+def test_soc_dp32g030_explicit_runs(image):
+    res = landell("--soc", "dp32g030", image([0x2001, 0xBE00]))
+    assert res.returncode == 0
+
+
+def test_soc_auto_picks_py32f071_from_the_reset_vector(tmp_path):
+    path = tmp_path / "py32.bin"
+    # app image: SP, reset 0x08002809 (entry at 0x08002808), then `movs r0,#1; bkpt`
+    path.write_bytes(struct.pack("<II", emu.SRAM_TOP, 0x08002809) + struct.pack("<HH", 0x2001, 0xBE00))
+    res = landell(path)
+    assert res.returncode == 0, res.stderr
+    assert reg(res.stdout, "r0") == 1
+    assert reg(res.stdout, "pc") == 0x0800280C  # just past the bkpt

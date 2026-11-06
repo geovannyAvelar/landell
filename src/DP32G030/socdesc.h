@@ -15,6 +15,10 @@ struct dp32g030_soc {
   uint32_t image_base; /* where a raw image is loaded; its vector table */
   bool has_vtor;
   const dp32g030_region_t *(*region_find)(uint32_t addr);
+  /* Cheap check that an image belongs to this chip (NULL = anything goes). */
+  bool (*accepts_image)(const uint8_t *fw, size_t size);
+  /* Board presets, see dp32g030_soc_defaults. */
+  void (*defaults)(dp32g030_cpu_t *c);
   /* Chip-specific power-on state, run at the end of dp32g030_cpu_reset. */
   void (*reset)(dp32g030_cpu_t *c);
   /* The LCD controller sits on SPI number `spi` (as the hooks number them);

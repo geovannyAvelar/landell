@@ -416,6 +416,11 @@ def load_lib(workdir):
     lib.dp32g030_cpu_run.restype = ctypes.c_uint8
     lib.dp32g030_soc_by_name.argtypes = [ctypes.c_char_p]
     lib.dp32g030_soc_by_name.restype = ctypes.c_void_p
+    lib.dp32g030_soc_detect.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t]
+    lib.dp32g030_soc_detect.restype = ctypes.c_void_p
+    lib.dp32g030_soc_name.argtypes = [ctypes.c_void_p]
+    lib.dp32g030_soc_name.restype = ctypes.c_char_p
+    lib.dp32g030_soc_defaults.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_cpu_new_soc.argtypes = [
         ctypes.c_void_p,
         ctypes.POINTER(ctypes.c_uint8),
