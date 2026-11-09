@@ -296,6 +296,7 @@ struct Held {
   std::map<SDL_Keycode, Key> keys;
   bool mouse_down = false;
   Key mouse_key = Key::K0;
+  bool changed = false; // set when a key edge is applied this frame
 
   bool held(Key k) const {
     if (mouse_down && mouse_key == k)
@@ -310,6 +311,7 @@ struct Held {
     if (pad->pressed(k) != want) {
       pad->set(k, want);
       ui->dirty = true;
+      changed = true;
     }
   }
   void key_down(SDL_Keycode sym, Key k) {
@@ -378,7 +380,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   SDL_RenderSetLogicalSize(renderer, kLcdWidth * o.scale,
                            (kLcdHeight + kPanelUnits) * o.scale);
   Canvas canvas(o.scale);
-  Held held{pad, ui, {}, false, Key::K0};
+  Held held{pad, ui, {}, false, Key::K0, false};
   Pacer pacer;
   bool stopped = false;
   unsigned capped_frames = 0;
@@ -386,8 +388,15 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   size_t last_steps = 0;
   uint64_t last_cycles = cpu->cycles;
   auto last = std::chrono::steady_clock::now();
+  auto last_present = last;
+  // Firmware debounce is several ms; when the host is behind real time, push
+  // a short catch-up burst after each key edge so the scan sees it sooner.
+  constexpr double kKeyCatchUpS = 0.05;
+  // Skia redraws compete with the emulator; while capped, present at ~30 Hz.
+  constexpr double kMinPresentS = 1.0 / 30.0;
 
   for (bool quit = false; !quit;) {
+    held.changed = false;
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
       if (ev.type == SDL_WINDOWEVENT &&
@@ -427,13 +436,22 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     last = now;
 
     if (!stopped) {
-      size_t steps = pacer.steps_for(elapsed, cpu->cycles - last_cycles, last_steps);
+      size_t steps =
+          pacer.steps_for(elapsed, cpu->cycles - last_cycles, last_steps);
       uint64_t before = cpu->cycles;
       uint8_t status = dp32g030_cpu_run(cpup, steps);
       cpu = *cpup;
       pad->set_cpu(cpu);
       last_steps = steps;
       last_cycles = before;
+
+      // Separate from the paced slice so the 0.1 s frame cap cannot eat it.
+      if (held.changed && status == EMU_OK && !cpu->halted) {
+        size_t boost = pacer.steps_for(kKeyCatchUpS, 0, 0);
+        status = dp32g030_cpu_run(cpup, boost);
+        cpu = *cpup;
+        pad->set_cpu(cpu);
+      }
 
       if (status != EMU_OK || cpu->halted) {
         char title[64];
@@ -460,7 +478,12 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     int level = backlight_level(cpu);
     if (ui->backlight < 0 || std::abs(level - ui->backlight) >= 3)
       ui->dirty = true; // the backlight moved enough to see
-    if (ui->dirty) {
+    double since_present =
+        std::chrono::duration<double>(now - last_present).count();
+    bool present_now =
+        ui->dirty &&
+        (held.changed || capped_frames == 0 || since_present >= kMinPresentS);
+    if (present_now) {
       ui->dirty = false;
       ui->backlight = level;
       lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale,
@@ -471,6 +494,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
       SDL_RenderClear(renderer);
       SDL_RenderCopy(renderer, texture, nullptr, nullptr);
       SDL_RenderPresent(renderer);
+      last_present = now;
     }
     SDL_Delay(1);
   }
