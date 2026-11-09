@@ -4,13 +4,16 @@
 #include "exc.h"
 
 /* PY32F071 DMA1, STM32-style. A transfer runs to completion the moment it is
-   started. Memory-to-memory copies CPAR -> CMAR. A memory-to-peripheral
-   channel (DIR = 1) clocks the peripheral: each unit is written to CPAR and,
-   for every enabled peripheral-to-memory channel (DIR = 0) with the same CPAR,
-   one unit is read back into its memory buffer. A peripheral-to-memory channel
-   on its own waits until a matching transmit channel runs. A channel mapped
-   (SYSCFG CFGR3/CFGR4) to a timer update request is paced instead: one unit
-   per request, and circular mode (CIRC) reloads it after a lap. Half-transfer
+   started, except SPI and timer-paced channels. Memory-to-memory copies
+   CPAR -> CMAR. A memory-to-peripheral channel (DIR = 1) clocks the
+   peripheral: each unit is written to CPAR and, for every enabled
+   peripheral-to-memory channel (DIR = 0) with the same CPAR, one unit is read
+   back into its memory buffer. A peripheral-to-memory channel on its own waits
+   until a matching transmit channel runs. A channel whose CPAR is an SPI data
+   register waits until that SPI is enabled (SPE): the Fusion flash driver
+   arms DMA while SPE is clear, then turns the SPI on. A channel mapped
+   (SYSCFG CFGR3/CFGR4) to a timer update request is paced: one unit per
+   request, and circular mode (CIRC) reloads it after a lap. Half-transfer
    flags are not modeled. */
 
 #define CCR_EN (1u << 0)
@@ -26,6 +29,9 @@
 #define SYSCFG_BASE 0x40010000u
 #define DMAREQ_TIM6_UP 0x26u
 #define DMAREQ_TIM7_UP 0x27u
+#define SPI1_DR 0x4001300Cu
+#define SPI2_DR 0x4000380Cu
+#define SPI_CR1_SPE (1u << 6)
 
 /* The DMA request mapped to channel `n` (0-based) by SYSCFG CFGR3/CFGR4. */
 static unsigned dma_map(const dp32g030_cpu_t *c, unsigned n) {
@@ -34,12 +40,23 @@ static unsigned dma_map(const dp32g030_cpu_t *c, unsigned n) {
   return (w >> (8 * (n & 3u))) & 0x3Fu;
 }
 
-/* Request-paced channels wait for their peripheral's request; the others
-   (memory to memory, SPI) run at once. */
+/* Request-paced channels wait for their peripheral's request. */
 static bool dma_paced(const dp32g030_cpu_t *c, unsigned n) {
   unsigned m = dma_map(c, n);
 
   return m == DMAREQ_TIM6_UP || m == DMAREQ_TIM7_UP;
+}
+
+static bool dma_targets_spi(uint32_t par) {
+  return par == SPI1_DR || par == SPI2_DR;
+}
+
+/* SPI DMA only moves while the SPI is enabled; arming EN with SPE clear must
+   not silently "complete" a transfer into a dead data register. */
+static bool dma_spi_ready(const dp32g030_cpu_t *c, uint32_t par) {
+  unsigned n = par == SPI1_DR ? 1u : 2u;
+
+  return (c->py32.spi[n - 1].cr1 & SPI_CR1_SPE) != 0;
 }
 
 static unsigned psize(uint32_t ccr) { return 1u << ((ccr >> 8) & 3u); }
@@ -105,6 +122,9 @@ static void dma_run(dp32g030_cpu_t *c) {
 
     if (!(ccr & CCR_EN) || !d->cndtr[n] || dma_paced(c, n))
       continue;
+    if (!(ccr & CCR_MEM2MEM) && dma_targets_spi(d->cpar[n]) &&
+        !dma_spi_ready(c, d->cpar[n]))
+      continue; /* wait for SPE; py32_dma_spi_kick runs us then */
     if (ccr & CCR_MEM2MEM) {
       while (d->cndtr[n] && dma_unit_rx(c, n))
         ;
@@ -233,6 +253,8 @@ bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
 
 /* A peripheral raised request `req`: every enabled channel mapped to it moves
    one unit. */
+void py32_dma_spi_kick(dp32g030_cpu_t *c) { dma_run(c); }
+
 void py32_dma_request(dp32g030_cpu_t *c, unsigned req) {
   dp32g030_py32_dma_t *d = &c->py32.dma;
 

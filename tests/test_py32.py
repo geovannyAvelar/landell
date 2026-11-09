@@ -483,6 +483,56 @@ def test_py32_dma_spi_full_duplex(lib, py32):
     assert isr & tcif(2) and isr & tcif(3)
 
 
+def test_py32_dma_spi_waits_for_spe(lib, py32):
+    """Fusion's PY25Q16 path: arm DMA while SPE is clear, then enable SPI."""
+    cpu = py32(app_image())
+    seen = []
+
+    def xfer(user, spi, tx):
+        seen.append(tx)
+        return 0xA5
+
+    cpu.contents.periph.hooks.spi_xfer = emu.SPI_CB(xfer)
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR)  # SPE clear
+    txbuf, rxbuf = SRAM_BASE + 0x100, SRAM_BASE + 0x200
+    for i, b in enumerate((0x11, 0x22)):
+        wr(lib, cpu, txbuf + i, b, 1)
+    dma_setup(lib, cpu, 4, CCR_EN | CCR_MINC, 2, SPI2 + SPI_DR, rxbuf)
+    dma_setup(lib, cpu, 5, CCR_EN | CCR_DIR | CCR_MINC, 2, SPI2 + SPI_DR, txbuf)
+    assert seen == []
+    assert rd(lib, cpu, ch(5, 4))[1] == 2  # CNDTR still full
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    assert seen == [0x11, 0x22]
+    assert [rd(lib, cpu, rxbuf + i, 1)[1] for i in range(2)] == [0xA5, 0xA5]
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(4)
+    assert rd(lib, cpu, DMA1 + DMA_ISR)[1] & tcif(5)
+
+
+def test_py32_flash_page_program_via_dma(lib, py32):
+    """Page-program data phase uses DMA after cmd/addr bytes (Fusion VFO save)."""
+    cpu = py32(app_image())
+    f = FlashLink(lib, cpu)
+    f.write_enable()
+    f.cs(True)
+    for b in (0x02, 0x00, 0x90, 0xC0):  # page program at 0x90C0
+        f.xfer(b)
+    payload = list(range(16))
+    txbuf, dummy = SRAM_BASE + 0x100, SRAM_BASE + 0x2F0
+    for i, b in enumerate(payload):
+        wr(lib, cpu, txbuf + i, b, 1)
+    wr(lib, cpu, dummy, 0xFF, 1)
+    # SPE was on for the cmd/addr bytes; Fusion disables SPI, arms DMA, re-enables.
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR)  # SPE clear
+    dma_setup(lib, cpu, 4, CCR_EN | CCR_MINC, 16, SPI2 + SPI_DR, dummy)  # RX
+    dma_setup(lib, cpu, 5, CCR_EN | CCR_DIR | CCR_MINC, 16, SPI2 + SPI_DR, txbuf)
+    before = (ctypes.c_uint8 * 4)()
+    lib.dp32g030_extflash_get(cpu, 0x90C0, before, 4)
+    assert list(before) == [0xFF] * 4  # not programmed yet
+    wr(lib, cpu, SPI2 + SPI_CR1, CR1_MSTR | CR1_SPE)
+    f.cs(False)
+    assert f.read(0x90C0, 16) == payload
+
+
 # ---- BK4819 on the PY32 board (CSN = PF9, SCL = PB8, SDA = PB9) ----------
 
 GPIOB_BASE = 0x50000400

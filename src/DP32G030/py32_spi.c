@@ -58,13 +58,20 @@ bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
   dp32g030_py32_spi_t *s = &c->py32.spi[n - 1];
   unsigned shift = 8 * (off & 3u);
   uint32_t mask = size == 4 ? 0xFFFFFFFFu : ((1u << (8 * size)) - 1u);
+  bool kick_dma = false;
 
   switch (off & ~3u) {
-  case 0x00:
+  case 0x00: {
+    uint32_t old = s->cr1;
+
     s->cr1 = (s->cr1 & ~(mask << shift)) | ((val & mask) << shift);
+    /* DMA may have been armed while SPE was clear (PY25Q16 bulk xfer). */
+    kick_dma = !(old & CR1_SPE) && (s->cr1 & CR1_SPE);
     break;
+  }
   case 0x04:
     s->cr2 = (s->cr2 & ~(mask << shift)) | ((val & mask) << shift);
+    kick_dma = (s->cr1 & CR1_SPE) != 0;
     break;
   case 0x08: /* SR: flags are cleared by reading DR */
     break;
@@ -91,5 +98,7 @@ bool py32_spi_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
   default: return false;
   }
   spi_update_irq(c, n);
+  if (kick_dma)
+    py32_dma_spi_kick(c);
   return true;
 }

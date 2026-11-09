@@ -117,6 +117,9 @@ bool py32_dma_read(dp32g030_cpu_t *c, uint32_t off, unsigned size,
 bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
                     uint32_t val);
 void py32_dma_reset(dp32g030_cpu_t *c);
+/* SPI was just enabled (or its DMA requests armed): drain any SPI channels
+   that were waiting with EN set while SPE was clear. */
+void py32_dma_spi_kick(dp32g030_cpu_t *c);
 
 /* BK4819 serial link decoder (bk4819.c), shared by every SoC. */
 void dp32g030_bk4819_pins(dp32g030_cpu_t *c, bool scn, bool scl, bool sda,
