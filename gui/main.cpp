@@ -2,6 +2,7 @@
 #include "k5ser_bridge.h"
 #include "keypad.h"
 #include "lcd_view.h"
+#include "mic.h"
 #include "pacer.h"
 #include "panel.h"
 
@@ -58,6 +59,7 @@ struct Options {
   unsigned press_n = 0;
   bool flock = false; // PTT+SIDE1 at power-on → F-Lock / advanced config
   bool mute = false;  // skip SDL audio (UI beeps)
+  bool no_mic = false; // skip SDL capture (VOX mic level)
 };
 
 // Shared with the core through hooks.user.
@@ -116,7 +118,8 @@ void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
       "usage: %s [--scale N] [--soc CHIP] [--k5ser] [-a|--adc CH=VAL] [--press KEYS] "
-      "[--flock] [--mute] [--screenshot out.png [--steps N]] firmware.bin\n"
+      "[--flock] [--mute] [--no-mic] [--screenshot out.png [--steps N]] "
+      "firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
       "  --soc CHIP         auto (default), dp32g030 or py32f071\n"
@@ -126,7 +129,8 @@ void usage(FILE *out, const char *prog) {
       "  --press KEY[,KEY]  hold keys from the start (0-9 menu up down exit "
       "star f ptt side1 side2)\n"
       "  --flock            boot into F-Lock / advanced config (hold PTT+side1)\n"
-      "  --mute             disable UI beeps (SDL audio)\n"
+      "  --mute             disable UI beeps (SDL audio playback)\n"
+      "  --no-mic           disable PC mic capture for VOX (REG_64)\n"
       "  --screenshot FILE  run headless, write one frame as PNG and exit\n"
       "  --steps N          instructions to run before the screenshot\n"
       "  -h, --help         show this help\n",
@@ -202,6 +206,10 @@ int parse_args(int argc, char **argv, Options *o) {
     }
     if (!std::strcmp(arg, "--mute")) {
       o->mute = true;
+      continue;
+    }
+    if (!std::strcmp(arg, "--no-mic")) {
+      o->no_mic = true;
       continue;
     }
     if (!std::strcmp(arg, "--press")) {
@@ -432,7 +440,7 @@ struct Held {
 int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   dp32g030_cpu_t *cpu = *cpup;
   Uint32 sdl_flags = SDL_INIT_VIDEO;
-  if (!o.mute)
+  if (!o.mute || !o.no_mic)
     sdl_flags |= SDL_INIT_AUDIO;
   if (SDL_Init(sdl_flags) != 0) {
     std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -441,10 +449,19 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   Beeper beeper;
   if (!o.mute) {
     if (!beeper.open())
-      std::fprintf(stderr, "warning: no audio (%s); beeps disabled\n",
+      std::fprintf(stderr, "warning: no audio playback (%s); beeps disabled\n",
                    SDL_GetError());
     else
       ui->beeper = &beeper;
+  }
+  Mic mic;
+  bool mic_ok = false;
+  if (!o.no_mic) {
+    if (!mic.open())
+      std::fprintf(stderr, "warning: no mic capture (%s); VOX mic disabled\n",
+                   SDL_GetError());
+    else
+      mic_ok = true;
   }
   SDL_Window *window = SDL_CreateWindow(
       "landell", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -462,6 +479,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
     ui->beeper = nullptr;
     beeper.close();
+    mic.close();
     if (renderer)
       SDL_DestroyRenderer(renderer);
     if (window)
@@ -533,6 +551,10 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
 
     if (ui->k5ser)
       ui->k5ser->poll_rx();
+
+    // Feed PC mic amplitude into BK4819 REG_64 so firmware VOX can trip.
+    if (mic_ok)
+      dp32g030_bk4819_set_mic_level(cpu, mic.level());
 
     if (!stopped) {
       size_t steps =
@@ -610,6 +632,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
 
   ui->beeper = nullptr;
   beeper.close();
+  mic.close();
   SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);

@@ -150,7 +150,7 @@ docs/k5ser.md            Chirp/CPS serial notes
 
 ## GUI
 
-`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Below the LCD it draws the radio's key panel. UI beeps (BK4819 TONE1 through the speaker-amp GPIO) play over SDL audio in window mode; there is still no RX demod audio or voice-chip playback.
+`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Below the LCD it draws the radio's key panel. UI beeps (BK4819 TONE1 through the speaker-amp GPIO) play over SDL audio in window mode, and the PC mic feeds BK4819 REG_64 so firmware VOX can key TX. There is still no RX demod audio, voice-chip playback, or TX AF encoding.
 
 Needs SDL2 and a Skia build. `scripts/build-skia.sh` clones depot_tools and Skia (branch pinned in the script) and builds a static, raster-only `libskia.a` in `~/skia` (set `SKIA_DIR` to change it). It takes a while and several GB.
 
@@ -162,7 +162,7 @@ build-gui/gui/landell-gui firmware.bin
 ```
 
 ```sh
-landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flock] [--mute] [--screenshot out.png [--steps N]] firmware.bin
+landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flock] [--mute] [--no-mic] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
 - `--soc CHIP`: `auto` (default), `dp32g030` or `py32f071`, as for `landell`.
@@ -171,7 +171,8 @@ landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flo
 - `--adc CH=VAL`: set an ADC channel (repeatable), after the board defaults. The defaults put the battery at a sane level (SARADC channel 9 on `dp32g030`, ADC channel 8 on `py32f071`); without that the firmware shows no UI.
 - `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.
 - `--flock`: boot into F-Lock / advanced config (holds PTT + side1 at power-on, then releases so the hidden menu can open).
-- `--mute`: disable UI beeps (does not open the SDL audio device).
+- `--mute`: disable UI beeps (SDL playback).
+- `--no-mic`: disable PC mic capture used for VOX (`set_mic_level` / REG_64). Enable VOX in the radio menu for it to key TX; virgin settings leave VOX off.
 - `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
 - Escape or closing the window quits.
 
