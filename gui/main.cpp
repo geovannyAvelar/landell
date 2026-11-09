@@ -5,6 +5,7 @@
 #include "mic.h"
 #include "pacer.h"
 #include "panel.h"
+#include "rtl_tcp.h"
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
@@ -60,6 +61,8 @@ struct Options {
   bool flock = false; // PTT+SIDE1 at power-on → F-Lock / advanced config
   bool mute = false;  // skip SDL audio (UI beeps)
   bool no_mic = false; // skip SDL capture (VOX mic level)
+  bool iq_tcp = false; // stream NBFM TX IQ over rtl_tcp
+  unsigned iq_port = 1234;
 };
 
 // Shared with the core through hooks.user.
@@ -69,6 +72,7 @@ struct Ui {
   Keypad *keypad = nullptr;
   K5serBridge *k5ser = nullptr;
   Beeper *beeper = nullptr;
+  RtlTcp *iq = nullptr;
   unsigned tone_hz = 0; // last BK4819 tone; 0 = chip silent
   bool amp_on = false;  // GPIOC pin 4 / AUDIO_PATH
 };
@@ -101,6 +105,12 @@ void tone_changed(void *user, unsigned hz) {
   apply_beep(ui);
 }
 
+void tx_changed(void *user, bool active, uint32_t hz) {
+  Ui *ui = static_cast<Ui *>(user);
+  if (ui->iq)
+    ui->iq->set_tx(active, hz);
+}
+
 void gpio_changed(void *user, unsigned port, uint32_t pins, uint32_t) {
   Ui *ui = static_cast<Ui *>(user);
   if (ui->keypad)
@@ -118,8 +128,8 @@ void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
       "usage: %s [--scale N] [--soc CHIP] [--k5ser] [-a|--adc CH=VAL] [--press KEYS] "
-      "[--flock] [--mute] [--no-mic] [--screenshot out.png [--steps N]] "
-      "firmware.bin\n"
+      "[--flock] [--mute] [--no-mic] [--iq-tcp [PORT]] "
+      "[--screenshot out.png [--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
       "  --soc CHIP         auto (default), dp32g030 or py32f071\n"
@@ -130,7 +140,8 @@ void usage(FILE *out, const char *prog) {
       "star f ptt side1 side2)\n"
       "  --flock            boot into F-Lock / advanced config (hold PTT+side1)\n"
       "  --mute             disable UI beeps (SDL audio playback)\n"
-      "  --no-mic           disable PC mic capture for VOX (REG_64)\n"
+      "  --no-mic           disable PC mic capture for VOX/TX AF (REG_64)\n"
+      "  --iq-tcp [PORT]    stream NBFM TX IQ on rtl_tcp (default port 1234)\n"
       "  --screenshot FILE  run headless, write one frame as PNG and exit\n"
       "  --steps N          instructions to run before the screenshot\n"
       "  -h, --help         show this help\n",
@@ -210,6 +221,20 @@ int parse_args(int argc, char **argv, Options *o) {
     }
     if (!std::strcmp(arg, "--no-mic")) {
       o->no_mic = true;
+      continue;
+    }
+    if (!std::strcmp(arg, "--iq-tcp")) {
+      o->iq_tcp = true;
+      o->iq_port = 1234;
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        if (!parse_uint(argv[i + 1], 65535, &v, &end) || *end != '\0' ||
+            v == 0) {
+          std::fprintf(stderr, "%s: invalid port for --iq-tcp\n", prog);
+          return EXIT_USAGE;
+        }
+        o->iq_port = unsigned(v);
+        i++;
+      }
       continue;
     }
     if (!std::strcmp(arg, "--press")) {
@@ -458,17 +483,20 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   bool mic_ok = false;
   if (!o.no_mic) {
     if (!mic.open())
-      std::fprintf(stderr, "warning: no mic capture (%s); VOX mic disabled\n",
+      std::fprintf(stderr, "warning: no mic capture (%s); VOX/TX mic disabled\n",
                    SDL_GetError());
     else
       mic_ok = true;
   }
+  RtlTcp iq;
   SDL_Window *window = SDL_CreateWindow(
       "landell", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
       kLcdWidth * o.scale, (kLcdHeight + kPanelUnits) * o.scale,
       SDL_WINDOW_RESIZABLE);
   SDL_Renderer *renderer =
       window ? SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED) : nullptr;
+  if (!renderer && window)
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
   SDL_Texture *texture =
       renderer ? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGRA32,
                                    SDL_TEXTUREACCESS_STREAMING,
@@ -486,6 +514,15 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
       SDL_DestroyWindow(window);
     SDL_Quit();
     return EXIT_USAGE;
+  }
+  if (o.iq_tcp) {
+    if (!iq.start(uint16_t(o.iq_port), mic_ok ? &mic : nullptr)) {
+      std::fprintf(stderr, "warning: rtl_tcp listen failed on %u\n", o.iq_port);
+    } else {
+      ui->iq = &iq;
+      iq.set_tx(dp32g030_bk4819_tx_active(cpu), dp32g030_bk4819_tx_hz(cpu));
+      iq.set_muted(dp32g030_bk4819_tx_muted(cpu));
+    }
   }
 
   // Logical size makes SDL map mouse coordinates back if the window manager
@@ -555,6 +592,10 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     // Feed PC mic amplitude into BK4819 REG_64 so firmware VOX can trip.
     if (mic_ok)
       dp32g030_bk4819_set_mic_level(cpu, mic.level());
+
+    // REG_50 mute is not on the TX edge hook; refresh each frame for IQ.
+    if (ui->iq)
+      ui->iq->set_muted(dp32g030_bk4819_tx_muted(cpu));
 
     if (!stopped) {
       size_t steps =
@@ -631,7 +672,9 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   }
 
   ui->beeper = nullptr;
+  ui->iq = nullptr;
   beeper.close();
+  iq.stop();
   mic.close();
   SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
@@ -693,6 +736,7 @@ int main(int argc, char **argv) {
   cpu->periph.hooks.lcd_update = lcd_updated;
   cpu->periph.hooks.gpio_change = gpio_changed;
   cpu->periph.hooks.bk4819_tone_change = tone_changed;
+  cpu->periph.hooks.bk4819_tx_change = tx_changed;
   cpu->periph.hooks.uart_tx = uart_txed;
   keypad.refresh();
   for (unsigned i = 0; i < opts.press_n; i++)

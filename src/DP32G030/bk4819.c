@@ -39,9 +39,45 @@
 /* Inverse of firmware scale_freq: ((hz * 1353245) + (1<<16)) >> 17 */
 #define TONE_SCALE_NUM 1353245u
 
+/* REG_33: GPIOn is bit (6-n). GPIO1 = PA enable → bit 5. */
+#define REG_33_PA_ENABLE (1u << 5)
+#define REG_30_PA_GAIN (1u << 3)
+#define REG_30_MIC_ADC (1u << 2)
+#define REG_30_TX_DSP (1u << 1)
+#define REG_30_TX_VOICE (REG_30_PA_GAIN | REG_30_MIC_ADC | REG_30_TX_DSP)
+/* Firmware stores frequency in 10 Hz units in REG_38/REG_39. */
+#define FREQ_HZ_PER_LSB 10u
+
 static void bk4819_fsk_fifo_status(dp32g030_bk4819_t *b);
 static void bk4819_fsk_fifo_pop(dp32g030_bk4819_t *b);
 static void bk4819_update_tone(dp32g030_cpu_t *c);
+static void bk4819_update_tx(dp32g030_cpu_t *c);
+
+static bool bk4819_compute_tx_active(const dp32g030_bk4819_t *b) {
+  if (!(b->regs[0x33] & REG_33_PA_ENABLE))
+    return false;
+  return (b->regs[0x30] & REG_30_TX_VOICE) == REG_30_TX_VOICE;
+}
+
+static uint32_t bk4819_tuned_hz(const dp32g030_bk4819_t *b) {
+  uint32_t raw =
+      (uint32_t)b->regs[0x38] | ((uint32_t)b->regs[0x39] << 16);
+  return raw * FREQ_HZ_PER_LSB;
+}
+
+static void bk4819_update_tx(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  const dp32g030_hooks_t *h = &c->periph.hooks;
+  bool active = bk4819_compute_tx_active(b);
+  uint32_t hz = active ? bk4819_tuned_hz(b) : 0;
+
+  if (active == b->tx_active && hz == b->tx_hz)
+    return;
+  b->tx_active = active;
+  b->tx_hz = hz;
+  if (h->bk4819_tx_change)
+    h->bk4819_tx_change(h->user, active, hz);
+}
 
 static unsigned bk4819_unscale_tone(uint16_t reg71) {
   return (unsigned)(((uint64_t)reg71 << 17) / TONE_SCALE_NUM);
@@ -194,8 +230,12 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
     if (h->bk4819_freq_change)
       h->bk4819_freq_change(h->user, freq);
     bk4819_update_scan(c);
+    bk4819_update_tx(c);
     break;
   }
+  case 0x30:
+    bk4819_update_tx(c);
+    break;
   case 0x78:
     bk4819_update_squelch(c);
     bk4819_update_scan(c);
@@ -225,6 +265,7 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
 
     if (h->bk4819_gpio_change)
       h->bk4819_gpio_change(h->user, (uint8_t)b->regs[0x33]);
+    bk4819_update_tx(c);
     break;
   }
   case 0x47:
@@ -375,6 +416,18 @@ uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c) {
 
 unsigned dp32g030_bk4819_tone_hz(const dp32g030_cpu_t *c) {
   return c->periph.bk4819.tone_hz;
+}
+
+bool dp32g030_bk4819_tx_active(const dp32g030_cpu_t *c) {
+  return c->periph.bk4819.tx_active;
+}
+
+uint32_t dp32g030_bk4819_tx_hz(const dp32g030_cpu_t *c) {
+  return c->periph.bk4819.tx_hz;
+}
+
+bool dp32g030_bk4819_tx_muted(const dp32g030_cpu_t *c) {
+  return (c->periph.bk4819.regs[0x50] & REG_50_TX_MUTE) != 0;
 }
 
 bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c) {

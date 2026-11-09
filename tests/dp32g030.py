@@ -104,6 +104,7 @@ I2C_READ_CB = ctypes.CFUNCTYPE(ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint, c
 I2C_STOP_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
 BK4819_FREQ_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32)
 BK4819_TONE_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint)
+BK4819_TX_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_bool, ctypes.c_uint32)
 BK4819_GPIO_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint8)
 LCD_UPDATE_CB = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 
@@ -315,6 +316,8 @@ class Bk4819(ctypes.Structure):
         ("fsk_rx_head", ctypes.c_uint),
         ("fsk_rx_count", ctypes.c_uint),
         ("tone_hz", ctypes.c_uint),
+        ("tx_active", ctypes.c_bool),
+        ("tx_hz", ctypes.c_uint32),
     ]
 
 
@@ -330,6 +333,7 @@ class Hooks(ctypes.Structure):
         ("i2c_stop", I2C_STOP_CB),
         ("bk4819_freq_change", BK4819_FREQ_CB),
         ("bk4819_tone_change", BK4819_TONE_CB),
+        ("bk4819_tx_change", BK4819_TX_CB),
         ("bk4819_gpio_change", BK4819_GPIO_CB),
         ("lcd_update", LCD_UPDATE_CB),
     ]
@@ -472,6 +476,12 @@ def load_lib(workdir):
     lib.dp32g030_bk4819_frequency.restype = ctypes.c_uint32
     lib.dp32g030_bk4819_tone_hz.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_bk4819_tone_hz.restype = ctypes.c_uint
+    lib.dp32g030_bk4819_tx_active.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_bk4819_tx_active.restype = ctypes.c_bool
+    lib.dp32g030_bk4819_tx_hz.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_bk4819_tx_hz.restype = ctypes.c_uint32
+    lib.dp32g030_bk4819_tx_muted.argtypes = [ctypes.POINTER(Cpu)]
+    lib.dp32g030_bk4819_tx_muted.restype = ctypes.c_bool
     lib.dp32g030_bk4819_squelch_open.argtypes = [ctypes.POINTER(Cpu)]
     lib.dp32g030_bk4819_squelch_open.restype = ctypes.c_bool
     lib.dp32g030_bk4819_set_ctcss_tone.argtypes = [ctypes.POINTER(Cpu), ctypes.c_uint32]

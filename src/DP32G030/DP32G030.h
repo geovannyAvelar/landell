@@ -302,6 +302,8 @@ typedef struct {
   uint16_t fsk_rx[8];    /* RX FIFO (REG_5F); depth is a guess (see README) */
   unsigned fsk_rx_head, fsk_rx_count;
   unsigned tone_hz; /* last notified UI beep Hz; 0 = silent (see REG_70/71/50/47) */
+  bool tx_active;   /* voice TX: REG_33 PA + REG_30 PA_GAIN/MIC_ADC/TX_DSP */
+  uint32_t tx_hz;   /* last notified RF Hz while TX (10 Hz/LSB → Hz) */
 } dp32g030_bk4819_t;
 
 /* Host callbacks. Any may be NULL. */
@@ -324,6 +326,8 @@ typedef struct {
   void (*bk4819_freq_change)(void *user, uint32_t freq);
   /* BK4819: UI beep tone changed (REG_70/71/50/47). `hz` is 0 when silent. */
   void (*bk4819_tone_change)(void *user, unsigned hz);
+  /* BK4819: voice TX gate/frequency changed. `hz` is RF Hz (0 if inactive). */
+  void (*bk4819_tx_change)(void *user, bool active, uint32_t hz);
   /* BK4819: its own GPIO0-6 output state changed (REG_33, low byte).
      GPIOn is bit (6-n) of `state`: 0=RX enable, 1=PA enable, 3=UHF LNA,
      4=VHF LNA, 5=red LED, 6=green LED (see BK4819_GPIO_PIN_t in the
@@ -553,6 +557,12 @@ uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c);
    TONE1 enable, REG_71 scale, REG_50 TxMute bit 15, and REG_47 AF=BEEP.
    Does not look at the speaker-amp GPIO; the host gates that separately. */
 unsigned dp32g030_bk4819_tone_hz(const dp32g030_cpu_t *c);
+/* Voice TX active: REG_33 PA GPIO + REG_30 PA_GAIN, MIC_ADC and TX_DSP. */
+bool dp32g030_bk4819_tx_active(const dp32g030_cpu_t *c);
+/* Tuned RF in Hz while TX (REG_38/39 as 10 Hz/LSB). 0 if TX inactive. */
+uint32_t dp32g030_bk4819_tx_hz(const dp32g030_cpu_t *c);
+/* REG_50 TxMute bit 15: carrier may stay, AF deviation should be silent. */
+bool dp32g030_bk4819_tx_muted(const dp32g030_cpu_t *c);
 /* Whether the RSSI-threshold squelch is currently open. */
 bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c);
 

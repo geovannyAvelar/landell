@@ -53,12 +53,16 @@ beeper_lib = static_library('beeper', files('beeper.cpp'),
 mic_lib = static_library('mic', files('mic.cpp'),
   dependencies : gui_deps,
   override_options : gui_opts)
+rtl_tcp_lib = static_library('rtl_tcp', files('rtl_tcp.cpp'),
+  link_with : mic_lib,
+  dependencies : gui_deps,
+  override_options : gui_opts)
 
 gui_exe = executable('landell-gui',
   files('main.cpp', 'k5ser_bridge.cpp', '../src/file.c'),
   include_directories : include_directories('../src'),
   link_with : [lcd_view_lib, pacer_lib, panel_lib, keypad_lib, beeper_lib,
-               mic_lib],
+               mic_lib, rtl_tcp_lib],
   dependencies : gui_deps,
   install : true,
   override_options : gui_opts)

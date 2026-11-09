@@ -573,6 +573,60 @@ def test_tone_change_notifies_on_unmute(lib):
         lib.dp32g030_cpu_free(ptr)
 
 
+def test_tx_activates_on_pa_and_voice_bits(lib):
+    ptr = new_cpu(lib)
+    try:
+        seen = []
+        ptr.contents.periph.hooks.bk4819_tx_change = emu.BK4819_TX_CB(
+            lambda user, active, hz: seen.append((bool(active), int(hz)))
+        )
+        link = Link(ptr, lib)
+        # 145.000 MHz in 10 Hz units = 14500000
+        link.write_register(0x38, 14500000 & 0xFFFF)
+        link.write_register(0x39, (14500000 >> 16) & 0xFFFF)
+        assert not lib.dp32g030_bk4819_tx_active(ptr)
+        assert lib.dp32g030_bk4819_tx_hz(ptr) == 0
+        # REG_30: PA_GAIN|MIC_ADC|TX_DSP = bits 3|2|1 = 0x0E
+        link.write_register(0x30, 0x0E)
+        assert not lib.dp32g030_bk4819_tx_active(ptr)  # still need PA GPIO
+        link.write_register(0x33, 0x20)  # GPIO1 PA enable
+        assert lib.dp32g030_bk4819_tx_active(ptr)
+        assert lib.dp32g030_bk4819_tx_hz(ptr) == 145000000
+        assert seen[-1] == (True, 145000000)
+        link.write_register(0x50, 0xBB20)  # TxMute
+        assert lib.dp32g030_bk4819_tx_muted(ptr)
+        assert lib.dp32g030_bk4819_tx_active(ptr)  # carrier still up
+        link.write_register(0x50, 0x3B20)
+        assert not lib.dp32g030_bk4819_tx_muted(ptr)
+        link.write_register(0x33, 0x00)  # PA off
+        assert not lib.dp32g030_bk4819_tx_active(ptr)
+        assert lib.dp32g030_bk4819_tx_hz(ptr) == 0
+        assert seen[-1] == (False, 0)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_tx_freq_change_while_active_notifies(lib):
+    ptr = new_cpu(lib)
+    try:
+        seen = []
+        ptr.contents.periph.hooks.bk4819_tx_change = emu.BK4819_TX_CB(
+            lambda user, active, hz: seen.append((bool(active), int(hz)))
+        )
+        link = Link(ptr, lib)
+        link.write_register(0x30, 0x0E)
+        link.write_register(0x33, 0x20)
+        link.write_register(0x38, 10000000 & 0xFFFF)  # 100.000 MHz
+        link.write_register(0x39, (10000000 >> 16) & 0xFFFF)
+        assert lib.dp32g030_bk4819_tx_hz(ptr) == 100000000
+        link.write_register(0x38, 14652000 & 0xFFFF)  # 146.520 MHz
+        link.write_register(0x39, (14652000 >> 16) & 0xFFFF)
+        assert lib.dp32g030_bk4819_tx_hz(ptr) == 146520000
+        assert (True, 146520000) in seen
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
 def test_tone_silence_on_mute_and_tone1_clear(lib):
     ptr = new_cpu(lib)
     try:

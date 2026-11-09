@@ -1,10 +1,16 @@
 #include "mic.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 bool Mic::open() {
   if (dev_)
     return true;
+
+  ring_.assign(kRingSamples, 0);
+  head_ = 0;
+  count_ = 0;
 
   SDL_AudioSpec want{}, have{};
   want.freq = kSampleRate;
@@ -27,6 +33,24 @@ void Mic::close() {
   SDL_CloseAudioDevice(dev_);
   dev_ = 0;
   level_.store(0, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(mu_);
+  head_ = 0;
+  count_ = 0;
+}
+
+size_t Mic::read(int16_t *dst, size_t n) {
+  if (!dst || n == 0)
+    return 0;
+  std::lock_guard<std::mutex> lock(mu_);
+  size_t take = std::min(n, count_);
+  size_t start =
+      (head_ + kRingSamples - count_) % kRingSamples; // oldest stored
+  for (size_t i = 0; i < take; i++)
+    dst[i] = ring_[(start + i) % kRingSamples];
+  count_ -= take;
+  for (size_t i = take; i < n; i++)
+    dst[i] = 0;
+  return n;
 }
 
 void Mic::callback(void *userdata, Uint8 *stream, int len) {
@@ -46,4 +70,12 @@ void Mic::callback(void *userdata, Uint8 *stream, int len) {
   if (scaled > 0x7FFFu)
     scaled = 0x7FFFu;
   m->level_.store(uint16_t(scaled), std::memory_order_relaxed);
+
+  std::lock_guard<std::mutex> lock(m->mu_);
+  for (int i = 0; i < n; i++) {
+    m->ring_[m->head_] = in[i];
+    m->head_ = (m->head_ + 1) % kRingSamples;
+    if (m->count_ < kRingSamples)
+      m->count_++;
+  }
 }

@@ -28,7 +28,7 @@ Implemented:
 - WWDT: a windowed 7-bit down-counter watchdog. Feeding outside its window, or the count reaching the reset threshold, resets the core; the window and pre-reset thresholds each raise their own interrupt.
 - AES128: ECB, CBC and CTR, encryption, decryption and key derivation, from a from-scratch AES-128 core (checked against the NIST SP 800-38A test vectors).
 - IIC0/1: master mode only, with a host transfer hook (start/write/read/stop), like SPI's. Transfers complete instantly.
-- BK4819 (the RF transceiver chip): not a DP32G030 peripheral, so not in the memory map. It's bit-banged over 3 GPIOC pins (SCN/SCL/SDA); `src/DP32G030/bk4819.c` decodes that protocol directly off GPIOC writes. Implemented: a generic 128-register file; frequency tracking (REG_38/REG_39, with a host notification hook); an RSSI-threshold squelch (REG_78, REG_67, REG_02 FOUND/LOST); CTCSS/CDCSS detection (REG_07/REG_08/REG_51 vs. REG_02's CTCSS/CDCSS FOUND/LOST); DTMF digit reporting (REG_0B's code, REG_02's DTMF_5TONE_FOUND, gated on REG_24 selecting the decoder for DTMF); VOX (REG_64 amplitude vs. REG_46/REG_79 thresholds with hysteresis, gated on REG_31, REG_02's VOX FOUND/LOST); a frequency scan result (REG_32's scan enable plus the RSSI squelch report the tuned frequency as "found" on REG_0D/REG_0E); and an FSK RX FIFO (REG_5F, REG_02's FSK_RX_FINISHED/FIFO_ALMOST_FULL/FIFO_ALMOST_EMPTY, gated on REG_59's FSK RX enable, cleared via REG_59's RX FIFO clear bit), used by any digital protocol built on the chip's FSK hardware (e.g. MDC1200, Aircopy). All of the above are driven by host "set/push the received signal" calls that mirror how SARADC's input works. There's also a host notification hook for the chip's own GPIO0-6 outputs (REG_33: RX/PA enable, LNA selects, the two status LEDs), and a UI-beep tone hook from REG_70/71/50/47 (TONE1 + TxMute + AF=BEEP). No AGC, RX/TX AF demod, the separate CTCSS/CDCSS auto-scan result (REG_68-6A), CTC2 tail detection, SELCALL or TX encoding yet.
+- BK4819 (the RF transceiver chip): not a DP32G030 peripheral, so not in the memory map. It's bit-banged over 3 GPIOC pins (SCN/SCL/SDA); `src/DP32G030/bk4819.c` decodes that protocol directly off GPIOC writes. Implemented: a generic 128-register file; frequency tracking (REG_38/REG_39, with a host notification hook); an RSSI-threshold squelch (REG_78, REG_67, REG_02 FOUND/LOST); CTCSS/CDCSS detection (REG_07/REG_08/REG_51 vs. REG_02's CTCSS/CDCSS FOUND/LOST); DTMF digit reporting (REG_0B's code, REG_02's DTMF_5TONE_FOUND, gated on REG_24 selecting the decoder for DTMF); VOX (REG_64 amplitude vs. REG_46/REG_79 thresholds with hysteresis, gated on REG_31, REG_02's VOX FOUND/LOST); a frequency scan result (REG_32's scan enable plus the RSSI squelch report the tuned frequency as "found" on REG_0D/REG_0E); and an FSK RX FIFO (REG_5F, REG_02's FSK_RX_FINISHED/FIFO_ALMOST_FULL/FIFO_ALMOST_EMPTY, gated on REG_59's FSK RX enable, cleared via REG_59's RX FIFO clear bit), used by any digital protocol built on the chip's FSK hardware (e.g. MDC1200, Aircopy). All of the above are driven by host "set/push the received signal" calls that mirror how SARADC's input works. There's also a host notification hook for the chip's own GPIO0-6 outputs (REG_33: RX/PA enable, LNA selects, the two status LEDs), a UI-beep tone hook from REG_70/71/50/47 (TONE1 + TxMute + AF=BEEP), and a voice-TX gate hook from REG_33 PA + REG_30 (PA_GAIN/MIC_ADC/TX_DSP) with RF Hz from REG_38/39 (10 Hz/LSB). No AGC, RX AF demod, the separate CTCSS/CDCSS auto-scan result (REG_68-6A), CTC2 tail detection, CTCSS/CDCSS TX encode, or AM/SSB TX yet.
 - PORTCON pull-up: `PORTx_PU` makes an input pin nothing has ever driven float high instead of to 0, matching a real pull-up resistor. (Pull-down needs no extra behaviour: that is already the floating default.)
 - SYSCON, PMU, flash control, and the rest of PORTCON (function select, input enable, open-drain, wakeup) as plain read/write register files (no behaviour yet).
 
@@ -67,7 +67,7 @@ BK4819 model limits:
 - VOX has no delay (`REG_7A`'s disable-delay field is stored but ignored); the real chip only drops VOX after the signal stays below the disable threshold for that long.
 - The frequency scan result only ever reports the single frequency currently tuned in REG_38/REG_39 (as "found" once RSSI squelch opens, "not finished" otherwise); the real firmware itself steps through candidate frequencies one at a time and asks the chip about each one, which is what this models. The separate CDCSS/CTCSS auto-scan result (`BK4819_GetCxCSSScanResult`, REG_68-6A) used for auto-detecting a channel's sub-tone is not modeled.
 - The FSK RX FIFO's depth (8 words) and "almost full" level (4 words) are a guess from how much the real firmware drains per interrupt; the real chip's depth isn't documented anywhere we found. There's no sync-word, preamble or CRC checking (REG_5A/REG_5B/REG_5C/REG_5D are stored only) - the host is trusted to only push already-valid decoded words, and framing/CRC is left to firmware.
-- Everything other than frequency, RSSI/glitch/noise, RSSI-threshold squelch, CTCSS/CDCSS detection, DTMF digit reporting, VOX, the frequency scan result, the FSK RX FIFO, and UI beep tone (REG_70/71/50/47) (AGC, RX/TX AF demod, SELCALL, TX encoding) is unimplemented register storage only.
+- Everything other than frequency, RSSI/glitch/noise, RSSI-threshold squelch, CTCSS/CDCSS detection, DTMF digit reporting, VOX, the frequency scan result, the FSK RX FIFO, UI beep tone (REG_70/71/50/47), and voice-TX gate/Hz (REG_30/33/38/39) (AGC, RX AF demod, CTCSS/CDCSS TX encode, SELCALL) is unimplemented register storage only.
 
 Model limits:
 
@@ -150,7 +150,7 @@ docs/k5ser.md            Chirp/CPS serial notes
 
 ## GUI
 
-`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Below the LCD it draws the radio's key panel. UI beeps (BK4819 TONE1 through the speaker-amp GPIO) play over SDL audio in window mode, and the PC mic feeds BK4819 REG_64 so firmware VOX can key TX. There is still no RX demod audio, voice-chip playback, or TX AF encoding.
+`landell-gui` shows the LCD in a window, drawn with Skia, while the firmware runs. Below the LCD it draws the radio's key panel. UI beeps (BK4819 TONE1 through the speaker-amp GPIO) play over SDL audio in window mode, and the PC mic feeds BK4819 REG_64 so firmware VOX can key TX. With `--iq-tcp`, voice TX is also turned into NBFM IQ (2.5 kHz deviation) gated by the chip's PA/TX bits and streamed over `rtl_tcp` for GQRX. There is still no RX demod audio, voice-chip playback, CTCSS/CDCSS TX encode, or AM/SSB.
 
 Needs SDL2 and a Skia build. `scripts/build-skia.sh` clones depot_tools and Skia (branch pinned in the script) and builds a static, raster-only `libskia.a` in `~/skia` (set `SKIA_DIR` to change it). It takes a while and several GB.
 
@@ -162,7 +162,7 @@ build-gui/gui/landell-gui firmware.bin
 ```
 
 ```sh
-landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flock] [--mute] [--no-mic] [--screenshot out.png [--steps N]] firmware.bin
+landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flock] [--mute] [--no-mic] [--iq-tcp [PORT]] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
 - `--soc CHIP`: `auto` (default), `dp32g030` or `py32f071`, as for `landell`.
@@ -172,7 +172,8 @@ landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--flo
 - `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.
 - `--flock`: boot into F-Lock / advanced config (holds PTT + side1 at power-on, then releases so the hidden menu can open).
 - `--mute`: disable UI beeps (SDL playback).
-- `--no-mic`: disable PC mic capture used for VOX (`set_mic_level` / REG_64). Enable VOX in the radio menu for it to key TX; virgin settings leave VOX off.
+- `--no-mic`: disable PC mic capture used for VOX and TX AF (`set_mic_level` / REG_64). Enable VOX in the radio menu for it to key TX; virgin settings leave VOX off.
+- `--iq-tcp [PORT]`: listen with a minimal `rtl_tcp` IQ server (default port 1234). While the firmware asserts voice TX (REG_33 PA + REG_30 PA_GAIN/MIC_ADC/TX_DSP), mic PCM is NBFM-modulated at the tuned VFO frequency. In GQRX: Device → RTL-SDR TCP → `localhost:PORT`, then tune to the radio frequency. IQ is wall-clock realtime; the TX gate follows the emulator.
 - `--screenshot out.png`: run headless for `--steps` instructions (default 10,000,000), write one frame as PNG and exit.
 - Escape or closing the window quits.
 
