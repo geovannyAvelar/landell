@@ -1,3 +1,4 @@
+#include "k5ser_bridge.h"
 #include "keypad.h"
 #include "lcd_view.h"
 #include "pacer.h"
@@ -47,6 +48,7 @@ struct Options {
   const char *soc = "auto";
   const char *path = nullptr;
   const char *screenshot = nullptr;
+  bool k5ser = false;
   int scale = kDefaultScale;
   size_t steps = kDefaultScreenshotSteps;
   AdcInput adc[16];
@@ -60,7 +62,14 @@ struct Ui {
   bool dirty = true; // LCD or panel needs redrawing
   int backlight = -1; // level (0-255) of the last drawn frame
   Keypad *keypad = nullptr;
+  K5serBridge *k5ser = nullptr;
 };
+
+void uart_txed(void *user, unsigned uart, uint8_t byte) {
+  Ui *ui = static_cast<Ui *>(user);
+  if (ui->k5ser)
+    ui->k5ser->on_tx(uart, byte);
+}
 
 // Backlight level 0-255; boards without a modeled backlight stay lit.
 int backlight_level(dp32g030_cpu_t *cpu) {
@@ -78,11 +87,12 @@ void gpio_changed(void *user, unsigned port, uint32_t, uint32_t) {
 void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
-      "usage: %s [--scale N] [--soc CHIP] [-a|--adc CH=VAL] [--press KEYS] [--screenshot out.png "
-      "[--steps N]] firmware.bin\n"
+      "usage: %s [--scale N] [--soc CHIP] [--k5ser] [-a|--adc CH=VAL] [--press KEYS] "
+      "[--screenshot out.png [--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
       "  --soc CHIP         auto (default), dp32g030 or py32f071\n"
+      "  --k5ser            open a PTY bridged to UART1/USART1 for Chirp\n"
       "  -a, --adc CH=VAL   set SARADC channel CH (0-15) to 12-bit VAL; "
       "repeatable\n"
       "  --press KEY[,KEY]  hold keys from the start (0-9 menu up down exit "
@@ -142,6 +152,10 @@ int parse_args(int argc, char **argv, Options *o) {
         return EXIT_USAGE;
       }
       o->soc = argv[i];
+      continue;
+    }
+    if (!std::strcmp(arg, "--k5ser")) {
+      o->k5ser = true;
       continue;
     }
     if (!std::strcmp(arg, "--press")) {
@@ -435,6 +449,9 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     double elapsed = std::chrono::duration<double>(now - last).count();
     last = now;
 
+    if (ui->k5ser)
+      ui->k5ser->poll_rx();
+
     if (!stopped) {
       size_t steps =
           pacer.steps_for(elapsed, cpu->cycles - last_cycles, last_steps);
@@ -545,9 +562,20 @@ int main(int argc, char **argv) {
   Ui ui;
   Keypad keypad(cpu, keypad_wiring_for(dp32g030_soc_name(soc)));
   ui.keypad = &keypad;
+  K5serBridge k5ser;
+  if (opts.k5ser) {
+    bool is_py32 = std::strcmp(dp32g030_soc_name(soc), "py32f071") == 0;
+    if (!k5ser.open(is_py32)) {
+      dp32g030_cpu_free(cpu);
+      return EXIT_USAGE;
+    }
+    k5ser.cpup = &cpu;
+    ui.k5ser = &k5ser;
+  }
   cpu->periph.hooks.user = &ui;
   cpu->periph.hooks.lcd_update = lcd_updated;
   cpu->periph.hooks.gpio_change = gpio_changed;
+  cpu->periph.hooks.uart_tx = uart_txed;
   keypad.refresh();
   for (unsigned i = 0; i < opts.press_n; i++)
     keypad.set(opts.press[i], true);
@@ -558,6 +586,7 @@ int main(int argc, char **argv) {
 
   int code = opts.screenshot ? run_screenshot(&cpu, opts, keypad)
                              : run_window(&cpu, opts, &ui, &keypad);
+  k5ser.close();
   dp32g030_cpu_free(cpu);
   return code;
 }

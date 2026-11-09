@@ -117,6 +117,17 @@ meson test -C build --print-errorlogs
 
 The tests load the static library through `ctypes` and cover the decoder, executor, bus and CLI.
 
+## Chirp / programming serial
+
+`landell-gui --k5ser` opens a PTY bridged to the firmware UART (`UART1` /
+`USART1`) so Chirp talks to the live emulator. `tools/k5ser` can also serve a
+standalone 8 KiB EEPROM file with no CPU. See [docs/k5ser.md](docs/k5ser.md).
+
+```sh
+build/gui/landell-gui --k5ser --soc py32f071 firmware/f4hwn.fusion.v6.3.0.bin
+# → /dev/pts/N   (point Chirp at that port, 38400)
+```
+
 ## Example firmware
 
 `firmware/` has a small bare-metal program (Fibonacci, bubble sort, sum of squares). It needs `arm-none-eabi-gcc`.
@@ -131,8 +142,10 @@ build/landell firmware/build/firmware.bin   # expect r0 = 011d0262
 ```
 src/main.c, src/file.c   CLI and file loading
 src/DP32G030/            SoC: decode, exec, bus, exceptions, SCS, timing, peripherals
+tools/k5ser/             UV-K5 programming PTY for Chirp (then CPS)
 tests/                   pytest suite, run through meson
 firmware/                example firmware
+docs/k5ser.md            Chirp/CPS serial notes
 ```
 
 ## GUI
@@ -149,10 +162,11 @@ build-gui/gui/landell-gui firmware.bin
 ```
 
 ```sh
-landell-gui [--scale N] [--soc CHIP] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
+landell-gui [--scale N] [--soc CHIP] [--k5ser] [-a CH=VAL] [--press KEYS] [--screenshot out.png [--steps N]] firmware.bin
 ```
 
 - `--soc CHIP`: `auto` (default), `dp32g030` or `py32f071`, as for `landell`.
+- `--k5ser`: open a PTY bridged to UART1/USART1 for Chirp (prints `/dev/pts/N`).
 - `--scale N`: window pixels per LCD pixel, 1-16 (default 4).
 - `--adc CH=VAL`: set an ADC channel (repeatable), after the board defaults. The defaults put the battery at a sane level (SARADC channel 9 on `dp32g030`, ADC channel 8 on `py32f071`); without that the firmware shows no UI.
 - `--press KEY[,KEY]`: hold keys from the start (`0`-`9`, `menu`, `up`, `down`, `exit`, `star`, `f`, `ptt`, `side1`, `side2`); mostly useful with `--screenshot`.

@@ -32,6 +32,10 @@
 #define SPI1_DR 0x4001300Cu
 #define SPI2_DR 0x4000380Cu
 #define SPI_CR1_SPE (1u << 6)
+#define USART1_DR 0x40013804u
+#define USART2_DR 0x40004404u
+#define USART3_DR 0x40004804u
+#define USART4_DR 0x40004C04u
 
 /* The DMA request mapped to channel `n` (0-based) by SYSCFG CFGR3/CFGR4. */
 static unsigned dma_map(const dp32g030_cpu_t *c, unsigned n) {
@@ -49,6 +53,11 @@ static bool dma_paced(const dp32g030_cpu_t *c, unsigned n) {
 
 static bool dma_targets_spi(uint32_t par) {
   return par == SPI1_DR || par == SPI2_DR;
+}
+
+static bool dma_targets_usart_dr(uint32_t par) {
+  return par == USART1_DR || par == USART2_DR || par == USART3_DR ||
+         par == USART4_DR;
 }
 
 /* SPI DMA only moves while the SPI is enabled; arming EN with SPE clear must
@@ -125,6 +134,9 @@ static void dma_run(dp32g030_cpu_t *c) {
     if (!(ccr & CCR_MEM2MEM) && dma_targets_spi(d->cpar[n]) &&
         !dma_spi_ready(c, d->cpar[n]))
       continue; /* wait for SPE; py32_dma_spi_kick runs us then */
+    /* USART RX is paced by each received byte (py32_dma_usart_rx_kick). */
+    if (!(ccr & (CCR_MEM2MEM | CCR_DIR)) && dma_targets_usart_dr(d->cpar[n]))
+      continue;
     if (ccr & CCR_MEM2MEM) {
       while (d->cndtr[n] && dma_unit_rx(c, n))
         ;
@@ -161,7 +173,7 @@ static void dma_run(dp32g030_cpu_t *c) {
     uint32_t ccr = d->ccr[n];
 
     if ((ccr & CCR_EN) && !(ccr & (CCR_DIR | CCR_MEM2MEM)) && !d->cndtr[n] &&
-        !dma_paced(c, n))
+        !dma_paced(c, n) && !dma_targets_usart_dr(d->cpar[n]))
       dma_finish(c, n);
   }
   d->busy = false;
@@ -254,6 +266,36 @@ bool py32_dma_write(dp32g030_cpu_t *c, uint32_t off, unsigned size,
 /* A peripheral raised request `req`: every enabled channel mapped to it moves
    one unit. */
 void py32_dma_spi_kick(dp32g030_cpu_t *c) { dma_run(c); }
+
+/* One USART RX byte is waiting in DR: move one unit on matching RX channels. */
+void py32_dma_usart_rx_kick(dp32g030_cpu_t *c, uint32_t dr_addr) {
+  dp32g030_py32_dma_t *d = &c->py32.dma;
+
+  if (d->busy)
+    return;
+  d->busy = true;
+  for (unsigned n = 0; n < PY32_DMA_CHANNELS; n++) {
+    uint32_t ccr = d->ccr[n];
+
+    if (!(ccr & CCR_EN) || !d->cndtr[n] || (ccr & (CCR_DIR | CCR_MEM2MEM)) ||
+        d->cpar[n] != dr_addr)
+      continue;
+    if (!dma_unit_rx(c, n))
+      continue;
+    if (!d->cndtr[n]) {
+      d->isr |= (1u << (4 * n)) | (1u << (4 * n + 1)); /* GIF, TCIF */
+      if (ccr & CCR_CIRC) {
+        d->cndtr[n] = d->reload[n];
+        d->cur_p[n] = d->cpar[n];
+        d->cur_m[n] = d->cmar[n];
+      } else {
+        d->ccr[n] &= ~CCR_EN;
+      }
+    }
+  }
+  d->busy = false;
+  dma_update_irq(c);
+}
 
 void py32_dma_request(dp32g030_cpu_t *c, unsigned req) {
   dp32g030_py32_dma_t *d = &c->py32.dma;

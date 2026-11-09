@@ -7,6 +7,7 @@ if python.found() and run_command(python, '-c', 'import pytest', check : false).
     env : {
       'DP32G030_LIB' : dp32g030_lib.full_path(),
       'LANDELL_BIN' : landell_exe.full_path(),
+      'PYTHONPATH' : join_paths(meson.project_source_root(), 'tools'),
     },
     depends : [dp32g030_lib, landell_exe],
     timeout : 120)

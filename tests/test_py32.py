@@ -253,6 +253,33 @@ def test_py32_gpio_port_f(pins):
     assert not pins.pins(PORT_A) & (1 << 8)
 
 
+# ---- USART (Chirp bridge on USART1) ------------------------------------
+
+USART1 = 0x40013800
+USART_SR, USART_DR, USART_CR1 = 0x00, 0x04, 0x0C
+USART_SR_RXNE, USART_SR_TXE, USART_SR_TC = 1 << 5, 1 << 7, 1 << 6
+USART_CR1_RE, USART_CR1_TE, USART_CR1_UE = 1 << 2, 1 << 3, 1 << 13
+
+
+def test_py32_usart_tx_hook_and_rx(lib, py32):
+    cpu = py32(app_image())
+    seen = []
+
+    def on_tx(user, uart, byte):
+        seen.append((uart, byte))
+
+    cpu.contents.periph.hooks.uart_tx = emu.UART_TX_CB(on_tx)
+    wr(lib, cpu, USART1 + USART_CR1, USART_CR1_UE | USART_CR1_TE | USART_CR1_RE)
+    assert rd(lib, cpu, USART1 + USART_SR)[1] & USART_SR_TXE
+    wr(lib, cpu, USART1 + USART_DR, 0xAB, 1)
+    assert seen == [(1, 0xAB)]  # hook uses USART number
+    assert not (rd(lib, cpu, USART1 + USART_SR)[1] & USART_SR_RXNE)
+    lib.py32_usart_rx(cpu, 0, 0x5A)
+    assert rd(lib, cpu, USART1 + USART_SR)[1] & USART_SR_RXNE
+    assert rd(lib, cpu, USART1 + USART_DR)[1] == 0x5A
+    assert not (rd(lib, cpu, USART1 + USART_SR)[1] & USART_SR_RXNE)
+
+
 # ---- SPI + LCD tap ------------------------------------------------------
 
 SPI1 = 0x40013000

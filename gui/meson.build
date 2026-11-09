@@ -12,7 +12,8 @@ skia_dep = declare_dependency(
   dependencies : [skia_lib, cxx.find_library('pthread'), cxx.find_library('dl')],
   include_directories : include_directories(skia_dir, is_system : true))
 
-gui_deps = [dp32g030_dep, sdl2, skia_dep]
+util_dep = cxx.find_library('util', required : true)
+gui_deps = [dp32g030_dep, sdl2, skia_dep, util_dep]
 gui_opts = ['werror=false']
 
 
@@ -46,7 +47,8 @@ test('lcd_view',
     link_with : lcd_view_lib, dependencies : gui_deps,
     override_options : gui_opts))
 
-gui_exe = executable('landell-gui', files('main.cpp', '../src/file.c'),
+gui_exe = executable('landell-gui',
+  files('main.cpp', 'k5ser_bridge.cpp', '../src/file.c'),
   include_directories : include_directories('../src'),
   link_with : [lcd_view_lib, pacer_lib, panel_lib, keypad_lib],
   dependencies : gui_deps,

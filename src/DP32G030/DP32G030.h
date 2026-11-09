@@ -412,6 +412,15 @@ typedef struct {
   uint32_t presc_cnt;  /* core clocks into the current prescaler count */
 } dp32g030_py32_tim_t;
 
+/* PY32 USART (STM32F0-style). Host RX FIFO; TX goes through hooks.uart_tx
+   with the USART number (1=USART1 … 4=USART4). */
+#define PY32_USART_FIFO 16
+typedef struct {
+  uint32_t sr, dr_tx, brr, cr1, cr2, cr3, gtpr;
+  uint8_t rx[PY32_USART_FIFO];
+  unsigned rx_head, rx_count;
+} dp32g030_py32_usart_t;
+
 /* Average level of the board's backlight pin over fixed windows (backlight.c). */
 typedef struct {
   uint64_t last_cycle; /* time accounted up to */
@@ -429,6 +438,7 @@ typedef struct {
   dp32g030_py32_spi_t spi[2]; /* SPI1, SPI2 */
   dp32g030_py32_adc_t adc;
   dp32g030_py32_tim_t tim[2]; /* TIM6, TIM7 */
+  dp32g030_py32_usart_t usart[4]; /* USART1..4 */
   dp32g030_py32_dma_t dma;
 } dp32g030_py32_t;
 
@@ -507,6 +517,9 @@ uint32_t dp32g030_gpio_pins(const dp32g030_cpu_t *c, unsigned port);
 /* Pins of `port` configured as outputs (1 = output). */
 uint32_t dp32g030_gpio_dir(const dp32g030_cpu_t *c, unsigned port);
 void dp32g030_uart_rx(dp32g030_cpu_t *c, unsigned uart, uint8_t byte);
+
+/* PY32 USART RX inject. `n` is 0=USART1 … 3=USART4 (see py32_usart.c). */
+void py32_usart_rx(dp32g030_cpu_t *c, unsigned n, uint8_t byte);
 /* Analog level (12-bit) seen on SARADC channel `ch`. */
 void dp32g030_adc_set_input(dp32g030_cpu_t *c, unsigned ch, uint32_t value);
 

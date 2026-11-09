@@ -120,6 +120,8 @@ void py32_dma_reset(dp32g030_cpu_t *c);
 /* SPI was just enabled (or its DMA requests armed): drain any SPI channels
    that were waiting with EN set while SPE was clear. */
 void py32_dma_spi_kick(dp32g030_cpu_t *c);
+/* One byte arrived in a USART DR: move it into any RX DMA channel on that DR. */
+void py32_dma_usart_rx_kick(dp32g030_cpu_t *c, uint32_t dr_addr);
 
 /* BK4819 serial link decoder (bk4819.c), shared by every SoC. */
 void dp32g030_bk4819_pins(dp32g030_cpu_t *c, bool scn, bool scl, bool sda,
@@ -147,6 +149,14 @@ bool py32_tim_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
                    uint32_t *out);
 bool py32_tim_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
                     uint32_t val);
+
+/* PY32F071 USART (py32_usart.c). `n` is 0 for USART1 … 3 for USART4. */
+bool py32_usart_read(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                     uint32_t *out);
+bool py32_usart_write(dp32g030_cpu_t *c, unsigned n, uint32_t off, unsigned size,
+                      uint32_t val);
+void py32_usart_reset(dp32g030_cpu_t *c);
+void py32_usart_rx(dp32g030_cpu_t *c, unsigned n, uint8_t byte);
 void py32_tim_reset(dp32g030_cpu_t *c);
 void py32_tim_tick(dp32g030_cpu_t *c, uint64_t cycles);
 uint64_t py32_tim_next_event(const dp32g030_cpu_t *c);

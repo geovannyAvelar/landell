@@ -117,6 +117,35 @@ static bool py32_tim_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   return py32_regfile_write(c, r, off, size, val);
 }
 
+static unsigned py32_usart_n(const dp32g030_region_t *r) {
+  switch (r->base) {
+  case 0x40013800u:
+    return 0;
+  case 0x40004400u:
+    return 1;
+  case 0x40004800u:
+    return 2;
+  case 0x40004C00u:
+    return 3;
+  default:
+    return 0;
+  }
+}
+
+static bool py32_usart_region_read(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                  uint32_t off, unsigned size, uint32_t *out) {
+  if (py32_usart_read(c, py32_usart_n(r), off, size, out))
+    return true;
+  return py32_regfile_read(c, r, off, size, out);
+}
+
+static bool py32_usart_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
+                                   uint32_t off, unsigned size, uint32_t val) {
+  if (py32_usart_write(c, py32_usart_n(r), off, size, val))
+    return true;
+  return py32_regfile_write(c, r, off, size, val);
+}
+
 #define PY32_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_regfile_read, py32_regfile_write}
 #define PY32_SPI_REGION(n, b, irq_n) \
@@ -127,6 +156,8 @@ static bool py32_tim_region_write(dp32g030_cpu_t *c, const dp32g030_region_t *r,
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_dma_region_read, py32_dma_region_write}
 #define PY32_TIM_REGION(n, b, irq_n) \
   {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_tim_region_read, py32_tim_region_write}
+#define PY32_USART_REGION(n, b, irq_n) \
+  {#n, (b), PY32_REGION_SIZE, -1, (irq_n), py32_usart_region_read, py32_usart_region_write}
 #define PY32_GPIO_REGION(n, b) \
   {#n, (b), PY32_REGION_SIZE, -1, -1, py32_gpio_region_read, py32_gpio_region_write}
 
@@ -141,9 +172,9 @@ static const dp32g030_region_t py32f071_regions[] = {
     PY32_REGION(WWDG, 0x40002C00u, 0),
     PY32_REGION(IWDG, 0x40003000u, -1),
     PY32_SPI_REGION(SPI2, 0x40003800u, 26),
-    PY32_REGION(USART2, 0x40004400u, 28),
-    PY32_REGION(USART3, 0x40004800u, 29),
-    PY32_REGION(USART4, 0x40004C00u, 29),
+    PY32_USART_REGION(USART2, 0x40004400u, 28),
+    PY32_USART_REGION(USART3, 0x40004800u, 29),
+    PY32_USART_REGION(USART4, 0x40004C00u, 29),
     PY32_REGION(I2C1, 0x40005400u, 23),
     PY32_REGION(I2C2, 0x40005800u, 24),
     PY32_REGION(USBD, 0x40005C00u, 31),
@@ -156,7 +187,7 @@ static const dp32g030_region_t py32f071_regions[] = {
     PY32_ADC_REGION(ADC1, 0x40012400u, 12),
     PY32_REGION(TIM1, 0x40012C00u, 13),
     PY32_SPI_REGION(SPI1, 0x40013000u, 25),
-    PY32_REGION(USART1, 0x40013800u, 27),
+    PY32_USART_REGION(USART1, 0x40013800u, 27),
     PY32_REGION(TIM15, 0x40014000u, 20),
     PY32_REGION(TIM16, 0x40014400u, 21),
     PY32_REGION(TIM17, 0x40014800u, 22),
@@ -222,6 +253,7 @@ static void py32_reset(dp32g030_cpu_t *c) {
   py32_adc_reset(c);
   py32_dma_reset(c);
   py32_tim_reset(c);
+  py32_usart_reset(c);
   if (idx >= 0)
     c->py32.regfile[idx][0] =
         RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_PLLON | RCC_CR_PLLRDY;
