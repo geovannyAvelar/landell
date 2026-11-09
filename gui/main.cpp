@@ -1,3 +1,4 @@
+#include "beeper.h"
 #include "k5ser_bridge.h"
 #include "keypad.h"
 #include "lcd_view.h"
@@ -55,6 +56,8 @@ struct Options {
   unsigned adc_n = 0;
   Key press[int(Key::Count)];
   unsigned press_n = 0;
+  bool flock = false; // PTT+SIDE1 at power-on → F-Lock / advanced config
+  bool mute = false;  // skip SDL audio (UI beeps)
 };
 
 // Shared with the core through hooks.user.
@@ -63,7 +66,19 @@ struct Ui {
   int backlight = -1; // level (0-255) of the last drawn frame
   Keypad *keypad = nullptr;
   K5serBridge *k5ser = nullptr;
+  Beeper *beeper = nullptr;
+  unsigned tone_hz = 0; // last BK4819 tone; 0 = chip silent
+  bool amp_on = false;  // GPIOC pin 4 / AUDIO_PATH
 };
+
+constexpr unsigned kAudioPathPort = 2; // GPIOC
+constexpr uint32_t kAudioPathPin = 1u << 4;
+
+void apply_beep(Ui *ui) {
+  if (!ui->beeper)
+    return;
+  ui->beeper->set_hz(ui->amp_on ? ui->tone_hz : 0);
+}
 
 void uart_txed(void *user, unsigned uart, uint8_t byte) {
   Ui *ui = static_cast<Ui *>(user);
@@ -78,17 +93,30 @@ int backlight_level(dp32g030_cpu_t *cpu) {
 
 void lcd_updated(void *user) { static_cast<Ui *>(user)->dirty = true; }
 
-void gpio_changed(void *user, unsigned port, uint32_t, uint32_t) {
+void tone_changed(void *user, unsigned hz) {
+  Ui *ui = static_cast<Ui *>(user);
+  ui->tone_hz = hz;
+  apply_beep(ui);
+}
+
+void gpio_changed(void *user, unsigned port, uint32_t pins, uint32_t) {
   Ui *ui = static_cast<Ui *>(user);
   if (ui->keypad)
     ui->keypad->on_gpio_change(port);
+  if (port == kAudioPathPort) {
+    bool amp = (pins & kAudioPathPin) != 0;
+    if (amp != ui->amp_on) {
+      ui->amp_on = amp;
+      apply_beep(ui);
+    }
+  }
 }
 
 void usage(FILE *out, const char *prog) {
   std::fprintf(
       out,
       "usage: %s [--scale N] [--soc CHIP] [--k5ser] [-a|--adc CH=VAL] [--press KEYS] "
-      "[--screenshot out.png [--steps N]] firmware.bin\n"
+      "[--flock] [--mute] [--screenshot out.png [--steps N]] firmware.bin\n"
       "\n"
       "  --scale N          window pixels per LCD pixel, 1-16 (default %d)\n"
       "  --soc CHIP         auto (default), dp32g030 or py32f071\n"
@@ -97,10 +125,20 @@ void usage(FILE *out, const char *prog) {
       "repeatable\n"
       "  --press KEY[,KEY]  hold keys from the start (0-9 menu up down exit "
       "star f ptt side1 side2)\n"
+      "  --flock            boot into F-Lock / advanced config (hold PTT+side1)\n"
+      "  --mute             disable UI beeps (SDL audio)\n"
       "  --screenshot FILE  run headless, write one frame as PNG and exit\n"
       "  --steps N          instructions to run before the screenshot\n"
       "  -h, --help         show this help\n",
       prog, kDefaultScale);
+}
+
+void add_press(Options *o, Key k) {
+  for (unsigned i = 0; i < o->press_n; i++)
+    if (o->press[i] == k)
+      return;
+  if (o->press_n < unsigned(Key::Count))
+    o->press[o->press_n++] = k;
 }
 
 bool parse_uint(const char *s, unsigned long max, unsigned long *out,
@@ -156,6 +194,14 @@ int parse_args(int argc, char **argv, Options *o) {
     }
     if (!std::strcmp(arg, "--k5ser")) {
       o->k5ser = true;
+      continue;
+    }
+    if (!std::strcmp(arg, "--flock")) {
+      o->flock = true;
+      continue;
+    }
+    if (!std::strcmp(arg, "--mute")) {
+      o->mute = true;
       continue;
     }
     if (!std::strcmp(arg, "--press")) {
@@ -218,6 +264,11 @@ int parse_args(int argc, char **argv, Options *o) {
     usage(stderr, prog);
     return EXIT_USAGE;
   }
+  // F4HWN / egzumer: PTT held + SIDE1 twice → BOOT_MODE_F_LOCK (advanced menu).
+  if (o->flock) {
+    add_press(o, Key::Ptt);
+    add_press(o, Key::Side1);
+  }
   return 0;
 }
 
@@ -246,13 +297,30 @@ int status_exit_code(uint8_t status) {
   }
 }
 
-int run_screenshot(dp32g030_cpu_t **cpup, const Options &o, const Keypad &keypad) {
-  uint8_t status = dp32g030_cpu_run(cpup, o.steps);
+// Cycles to keep PTT+SIDE1 down so BOOT_GetMode can sample F-Lock, then release
+// so the firmware can leave the "RELEASE ALL KEYS" prompt.
+constexpr uint64_t kFlockHoldCycles = 100000000ull;
+
+void release_flock_keys(Keypad *pad) {
+  pad->set(Key::Ptt, false);
+  pad->set(Key::Side1, false);
+}
+
+int run_screenshot(dp32g030_cpu_t **cpup, const Options &o, Keypad *keypad) {
+  uint8_t status = EMU_OK;
+  if (o.flock && o.steps > kFlockHoldCycles) {
+    status = dp32g030_cpu_run(cpup, size_t(kFlockHoldCycles));
+    release_flock_keys(keypad);
+    if (status == EMU_OK && !(*cpup)->halted)
+      status = dp32g030_cpu_run(cpup, o.steps - size_t(kFlockHoldCycles));
+  } else {
+    status = dp32g030_cpu_run(cpup, o.steps);
+  }
   dp32g030_cpu_t *cpu = *cpup;
   Canvas canvas(o.scale);
   lcd_view_draw(cpu, canvas.surface->getCanvas(), o.scale,
                 float(backlight_level(cpu)) / 255.0f);
-  panel_draw(canvas.surface->getCanvas(), o.scale, keypad);
+  panel_draw(canvas.surface->getCanvas(), o.scale, *keypad);
 
   SkPixmap pixmap;
   if (!canvas.bitmap.peekPixels(&pixmap)) {
@@ -363,9 +431,20 @@ struct Held {
 
 int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   dp32g030_cpu_t *cpu = *cpup;
-  if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+  Uint32 sdl_flags = SDL_INIT_VIDEO;
+  if (!o.mute)
+    sdl_flags |= SDL_INIT_AUDIO;
+  if (SDL_Init(sdl_flags) != 0) {
     std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return EXIT_USAGE;
+  }
+  Beeper beeper;
+  if (!o.mute) {
+    if (!beeper.open())
+      std::fprintf(stderr, "warning: no audio (%s); beeps disabled\n",
+                   SDL_GetError());
+    else
+      ui->beeper = &beeper;
   }
   SDL_Window *window = SDL_CreateWindow(
       "landell", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -381,6 +460,8 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
                : nullptr;
   if (!texture) {
     std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
+    ui->beeper = nullptr;
+    beeper.close();
     if (renderer)
       SDL_DestroyRenderer(renderer);
     if (window)
@@ -397,6 +478,7 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
   Held held{pad, ui, {}, false, Key::K0, false};
   Pacer pacer;
   bool stopped = false;
+  bool flock_released = !o.flock;
   unsigned capped_frames = 0;
   bool warned = false;
   size_t last_steps = 0;
@@ -462,6 +544,16 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
       last_steps = steps;
       last_cycles = before;
 
+      // Drop the power-on F-Lock chord once BOOT_GetMode has had time to sample.
+      if (!flock_released && cpu->cycles >= kFlockHoldCycles) {
+        flock_released = true;
+        if (!held.held(Key::Ptt))
+          pad->set(Key::Ptt, false);
+        if (!held.held(Key::Side1))
+          pad->set(Key::Side1, false);
+        ui->dirty = true;
+      }
+
       // Separate from the paced slice so the 0.1 s frame cap cannot eat it.
       if (held.changed && status == EMU_OK && !cpu->halted) {
         size_t boost = pacer.steps_for(kKeyCatchUpS, 0, 0);
@@ -516,6 +608,8 @@ int run_window(dp32g030_cpu_t **cpup, const Options &o, Ui *ui, Keypad *pad) {
     SDL_Delay(1);
   }
 
+  ui->beeper = nullptr;
+  beeper.close();
   SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
@@ -575,6 +669,7 @@ int main(int argc, char **argv) {
   cpu->periph.hooks.user = &ui;
   cpu->periph.hooks.lcd_update = lcd_updated;
   cpu->periph.hooks.gpio_change = gpio_changed;
+  cpu->periph.hooks.bk4819_tone_change = tone_changed;
   cpu->periph.hooks.uart_tx = uart_txed;
   keypad.refresh();
   for (unsigned i = 0; i < opts.press_n; i++)
@@ -584,7 +679,7 @@ int main(int argc, char **argv) {
   for (unsigned i = 0; i < opts.adc_n; i++)
     dp32g030_adc_set_input(cpu, opts.adc[i].ch, opts.adc[i].val);
 
-  int code = opts.screenshot ? run_screenshot(&cpu, opts, keypad)
+  int code = opts.screenshot ? run_screenshot(&cpu, opts, &keypad)
                              : run_window(&cpu, opts, &ui, &keypad);
   k5ser.close();
   dp32g030_cpu_free(cpu);

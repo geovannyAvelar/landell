@@ -31,8 +31,43 @@
 #define REG_02_VOX_FOUND (1u << 5)
 #define REG_31_VOX_ENABLE (1u << 2)
 
+#define REG_50_TX_MUTE (1u << 15)
+#define REG_70_ENABLE_TONE1 (1u << 15)
+#define REG_47_AF_SHIFT 8
+#define REG_47_AF_MASK 0xFu
+#define BK4819_AF_BEEP 3u
+/* Inverse of firmware scale_freq: ((hz * 1353245) + (1<<16)) >> 17 */
+#define TONE_SCALE_NUM 1353245u
+
 static void bk4819_fsk_fifo_status(dp32g030_bk4819_t *b);
 static void bk4819_fsk_fifo_pop(dp32g030_bk4819_t *b);
+static void bk4819_update_tone(dp32g030_cpu_t *c);
+
+static unsigned bk4819_unscale_tone(uint16_t reg71) {
+  return (unsigned)(((uint64_t)reg71 << 17) / TONE_SCALE_NUM);
+}
+
+static unsigned bk4819_compute_tone_hz(const dp32g030_bk4819_t *b) {
+  if (!(b->regs[0x70] & REG_70_ENABLE_TONE1))
+    return 0;
+  if (b->regs[0x50] & REG_50_TX_MUTE)
+    return 0;
+  if (((b->regs[0x47] >> REG_47_AF_SHIFT) & REG_47_AF_MASK) != BK4819_AF_BEEP)
+    return 0;
+  return bk4819_unscale_tone(b->regs[0x71]);
+}
+
+static void bk4819_update_tone(dp32g030_cpu_t *c) {
+  dp32g030_bk4819_t *b = &c->periph.bk4819;
+  unsigned hz = bk4819_compute_tone_hz(b);
+  const dp32g030_hooks_t *h = &c->periph.hooks;
+
+  if (hz == b->tone_hz)
+    return;
+  b->tone_hz = hz;
+  if (h->bk4819_tone_change)
+    h->bk4819_tone_change(h->user, hz);
+}
 
 static void bk4819_reset_transaction(dp32g030_bk4819_t *b) {
   b->selected = false;
@@ -192,6 +227,12 @@ static void bk4819_commit_write(dp32g030_cpu_t *c, uint8_t addr) {
       h->bk4819_gpio_change(h->user, (uint8_t)b->regs[0x33]);
     break;
   }
+  case 0x47:
+  case 0x50:
+  case 0x70:
+  case 0x71:
+    bk4819_update_tone(c);
+    break;
   case 0x59:
     if (b->regs[0x59] & REG_59_RX_FIFO_CLEAR) {
       b->fsk_rx_head = b->fsk_rx_count = 0;
@@ -330,6 +371,10 @@ uint32_t dp32g030_bk4819_frequency(const dp32g030_cpu_t *c) {
   const dp32g030_bk4819_t *b = &c->periph.bk4819;
 
   return (uint32_t)b->regs[0x38] | ((uint32_t)b->regs[0x39] << 16);
+}
+
+unsigned dp32g030_bk4819_tone_hz(const dp32g030_cpu_t *c) {
+  return c->periph.bk4819.tone_hz;
 }
 
 bool dp32g030_bk4819_squelch_open(const dp32g030_cpu_t *c) {

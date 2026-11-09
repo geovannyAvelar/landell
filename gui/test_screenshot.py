@@ -73,6 +73,19 @@ with tempfile.TemporaryDirectory() as d:
     check(a.returncode == 0 and b.returncode == 0, f"press runs: {a} {b}")
     check(plain.read_bytes() != pressed.read_bytes(), "--press changes the picture")
 
+    flock = Path(d) / "flock.png"
+    press_flock = Path(d) / "press_flock.png"
+    c = run("--screenshot", str(flock), "--steps", "1000", "--scale", "2",
+            "--flock", str(fw))
+    d_run = run("--screenshot", str(press_flock), "--steps", "1000", "--scale", "2",
+                "--press", "ptt,side1", str(fw))
+    check(c.returncode == 0 and d_run.returncode == 0, f"--flock runs: {c} {d_run}")
+    check(flock.read_bytes() == press_flock.read_bytes(),
+          "--flock matches --press ptt,side1")
+    check(flock.read_bytes() != plain.read_bytes(), "--flock changes the picture")
+    r = run("--help")
+    check(r.returncode == 0 and "--flock" in r.stdout, f"--help flock: {r.stdout!r}")
+
     # a PY32F071 app image is detected from its reset vector (and with --soc)
     py = Path(d) / "py32.bin"
     py.write_bytes(struct.pack("<IIH", 0x20004000, 0x08002809, 0xBE00))

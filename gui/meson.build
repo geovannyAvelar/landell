@@ -47,10 +47,14 @@ test('lcd_view',
     link_with : lcd_view_lib, dependencies : gui_deps,
     override_options : gui_opts))
 
+beeper_lib = static_library('beeper', files('beeper.cpp'),
+  dependencies : gui_deps,
+  override_options : gui_opts)
+
 gui_exe = executable('landell-gui',
   files('main.cpp', 'k5ser_bridge.cpp', '../src/file.c'),
   include_directories : include_directories('../src'),
-  link_with : [lcd_view_lib, pacer_lib, panel_lib, keypad_lib],
+  link_with : [lcd_view_lib, pacer_lib, panel_lib, keypad_lib, beeper_lib],
   dependencies : gui_deps,
   install : true,
   override_options : gui_opts)

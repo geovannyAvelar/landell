@@ -530,3 +530,69 @@ def test_transaction_aborted_by_chip_select_rise_is_discarded(lib):
         assert link.read_register(0x7F) == 0
     finally:
         lib.dp32g030_cpu_free(ptr)
+
+
+def scale_freq(hz):
+    """Firmware scale_freq: ((hz * 1353245) + (1<<16)) >> 17."""
+    return ((hz * 1353245) + (1 << 16)) >> 17
+
+
+def test_tone_hz_round_trip_common_beeps(lib):
+    ptr = new_cpu(lib)
+    try:
+        link = Link(ptr, lib)
+        link.write_register(0x47, (6 << 12) | (3 << 8) | (1 << 6))  # AF_BEEP
+        link.write_register(0x50, 0x3B20)  # unmuted
+        link.write_register(0x70, 1 << 15)  # TONE1 on
+        for hz in (440, 500, 880, 1000):
+            link.write_register(0x71, scale_freq(hz))
+            got = lib.dp32g030_bk4819_tone_hz(ptr)
+            assert abs(got - hz) <= 1, (hz, got)
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_tone_change_notifies_on_unmute(lib):
+    ptr = new_cpu(lib)
+    try:
+        seen = []
+        ptr.contents.periph.hooks.bk4819_tone_change = emu.BK4819_TONE_CB(
+            lambda user, hz: seen.append(hz)
+        )
+        link = Link(ptr, lib)
+        link.write_register(0x47, (6 << 12) | (3 << 8) | (1 << 6))
+        link.write_register(0x50, 0xBB20)  # muted
+        link.write_register(0x70, 1 << 15)
+        link.write_register(0x71, scale_freq(880))
+        assert lib.dp32g030_bk4819_tone_hz(ptr) == 0
+        assert seen == []
+        link.write_register(0x50, 0x3B20)  # unmute
+        assert abs(seen[-1] - 880) <= 1
+        assert abs(lib.dp32g030_bk4819_tone_hz(ptr) - 880) <= 1
+    finally:
+        lib.dp32g030_cpu_free(ptr)
+
+
+def test_tone_silence_on_mute_and_tone1_clear(lib):
+    ptr = new_cpu(lib)
+    try:
+        seen = []
+        ptr.contents.periph.hooks.bk4819_tone_change = emu.BK4819_TONE_CB(
+            lambda user, hz: seen.append(hz)
+        )
+        link = Link(ptr, lib)
+        link.write_register(0x47, (6 << 12) | (3 << 8) | (1 << 6))
+        link.write_register(0x50, 0x3B20)
+        link.write_register(0x70, 1 << 15)
+        link.write_register(0x71, scale_freq(500))
+        assert seen and seen[-1] != 0
+        link.write_register(0x50, 0xBB20)  # mute
+        assert seen[-1] == 0
+        assert lib.dp32g030_bk4819_tone_hz(ptr) == 0
+        link.write_register(0x50, 0x3B20)
+        assert seen[-1] != 0
+        link.write_register(0x70, 0)
+        assert seen[-1] == 0
+        assert lib.dp32g030_bk4819_tone_hz(ptr) == 0
+    finally:
+        lib.dp32g030_cpu_free(ptr)
